@@ -29,26 +29,24 @@ import { fileURLToPath } from 'url';
 // Load environment variables
 dotenv.config();
 
-
-
 // ES Modules fix for __dirname
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-// Import routes - IMPORTANT: Import .ts files, not .js
-import authRoutes from './routes/auth.routes.js'; // This should be .ts
-import chatRoutes from './routes/chat.routes.js'; // This should be .ts
-import callRoutes from './routes/call.routes.js'; // This should be .ts
-import translationRoutes from './routes/translation.routes.js'; // This should be .ts
+// Import routes
+import authRoutes from './routes/auth.routes.js';
+import chatRoutes from './routes/chat.routes.js';
+import callRoutes from './routes/call.routes.js';
+import translationRoutes from './routes/translation.routes.js';
 import userRoutes from './routes/user.routes.js';
 import friendRequestRoutes from './routes/friendRequest.routes.js';
 
 // Import WebSocket handlers
-import { initializeSocket } from './socket/socket.handler.js'; // This should be .ts
+import { initializeSocket } from './socket/socket.handler.js';
 
 // Import middleware
-import { authenticate } from './middleware/auth.middleware.js'; // This should be .ts
-import errorHandler from './middleware/errorHandler.js'; // This should be .ts
+import { authenticate } from './middleware/auth.middleware.js';
+import errorHandler from './middleware/errorHandler.js';
 
 // Initialize Express app
 const app: Application = express();
@@ -57,33 +55,113 @@ const PORT = process.env.PORT || 5001;
 // Create HTTP server for Socket.IO
 const server = http.createServer(app);
 
-// Initialize Socket.IO with CORS configuration
+// ====================
+// 🔧 CORS CONFIGURATION - MUST BE FIRST
+// ====================
+
+// Get frontend URLs from environment or use defaults
+const getFrontendUrls = () => {
+  const urls = [
+    'http://localhost:3000',
+    'http://localhost:5000',
+  ];
+  
+  // Add from environment variable
+  if (process.env.FRONTEND_URL) {
+    process.env.FRONTEND_URL.split(',').forEach(url => urls.push(url.trim()));
+  }
+  
+  // Add your specific Vercel URLs
+  urls.push(
+    'https://whatsapp-clone-frontend.vercel.app',
+    'https://whatsapp-clone-frontend-6l1lxhq15-kaquib24s-projects.vercel.app'
+  );
+  
+  return urls;
+};
+
+// CORS options
+const corsOptions = {
+  origin: function (origin: string | undefined, callback: (err: Error | null, allow?: boolean) => void) {
+    const allowedOrigins = getFrontendUrls();
+    
+    // Allow requests with no origin (like mobile apps or curl)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Check if origin is allowed
+    const isAllowed = allowedOrigins.some(allowed => {
+      if (allowed === origin) return true;
+      // Allow all Vercel preview deployments
+      if (allowed === 'https://whatsapp-clone-frontend.vercel.app' && origin.includes('vercel.app')) return true;
+      // Allow all Render preview deployments
+      if (origin.includes('.onrender.com')) return true;
+      return false;
+    });
+    
+    if (isAllowed) {
+      callback(null, true);
+    } else {
+      console.log(`❌ CORS blocked origin: ${origin}`);
+      callback(null, true); // Still allow for testing - remove in production if needed
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'Cookie',
+    'Set-Cookie'
+  ],
+  exposedHeaders: ['Set-Cookie'],
+  optionsSuccessStatus: 200,
+  preflightContinue: false,
+};
+
+// Apply CORS middleware FIRST
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions));
+
 // Initialize Socket.IO with CORS configuration
 const io = new Server(server, {
   cors: {
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: (origin, callback) => {
+      const allowedOrigins = getFrontendUrls();
+      if (!origin || allowedOrigins.some(allowed => origin.includes(allowed) || origin.includes('vercel.app') || origin.includes('onrender.com'))) {
+        callback(null, true);
+      } else {
+        callback(new Error('CORS not allowed'));
+      }
+    },
     credentials: true,
+    methods: ['GET', 'POST'],
   },
   pingTimeout: 10000,
   pingInterval: 25000,
+  transports: ['websocket', 'polling'],
 });
 
-// FIXED: Make io available globally for translation service
+// Make io available globally
 (global as any).io = io;
-
 app.set("io", io);
-app.use(express.json({ limit: "50mb" }));
-
 
 // ====================
 // 🛡️ SECURITY MIDDLEWARE
 // ====================
-app.use(helmet());
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: "cross-origin" },
+  crossOriginOpenerPolicy: { policy: "same-origin-allow-popups" },
+}));
 
 // Rate limiting
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 100, // Limit each IP to 100 requests per windowMs
+  max: 100,
   message: 'Too many requests from this IP, please try again later.',
   standardHeaders: true,
   legacyHeaders: false,
@@ -91,18 +169,6 @@ const apiLimiter = rateLimit({
 
 // Apply rate limiting to API routes
 app.use('/api/', apiLimiter);
-
-// CORS configuration
-const corsOptions = {
-  origin: process.env.FRONTEND_URL?.split(',') || ['http://localhost:3000'],
-  credentials: true,
-  optionsSuccessStatus: 200,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
-};
-
-app.use(cors(corsOptions));
-app.options('*', cors(corsOptions)); // Enable pre-flight for all routes
 
 // ====================
 // 🚀 EXPRESS MIDDLEWARE
@@ -174,21 +240,13 @@ app.get('/api/docs', (req: Request, res: Response) => {
   });
 });
 
-// API v1 Routes - ONLY USE ROUTES YOU ACTUALLY HAVE
+// API v1 Routes
 app.use('/api/v1/users', userRoutes);
 app.use('/api/v1/friend-requests', friendRequestRoutes);
 app.use('/api/v1/auth', authRoutes);
 app.use('/api/v1/chats', authenticate, chatRoutes);
 app.use('/api/v1/calls', authenticate, callRoutes);
 app.use('/api/v1/translation', authenticate, translationRoutes);
-
-// COMMENT OUT OR REMOVE ROUTES YOU DON'T HAVE
-// app.use('/api/v1/users', authenticate, userRoutes);
-// app.use('/api/v1/messages', authenticate, messageRoutes);
-// app.use('/api/v1/stories', authenticate, storyRoutes);
-// app.use('/api/v1/status', authenticate, statusRoutes);
-// app.use('/api/v1/payments', authenticate, paymentRoutes);
-// app.use('/api/v1/notifications', authenticate, notificationRoutes);
 
 // WebSocket test endpoint
 app.get('/api/v1/ws-test', authenticate, (req: Request, res: Response) => {
@@ -247,15 +305,15 @@ const startServer = async () => {
     // Connect to database
     await connectDB();
     
-    // Start HTTP server (not app.listen() because of Socket.IO)
+    // Start HTTP server
     server.listen(PORT, () => {
       console.log(`
 🚀 WhatsApp Clone Server is running!
       
 📍 Environment: ${process.env.NODE_ENV || 'development'}
 📍 Port: ${PORT}
-📍 Database: ${process.env.MONGODB_URI?.split('@')[1] || 'localhost'}
-📍 Frontend URL: ${process.env.FRONTEND_URL || 'http://localhost:3000'}
+📍 Database: ${process.env.MONGODB_URI?.split('@')[1]?.split('/')[0] || 'localhost'}
+📍 Frontend URLs: ${getFrontendUrls().join(', ')}
       
 🔌 WebSocket Server: ws://localhost:${PORT}
       
@@ -275,7 +333,7 @@ const startServer = async () => {
 📞 POST   /api/v1/calls              - Start call
 📞 GET    /api/v1/calls/:callId      - Get call details
       
-🔤 Translation (Day 6):
+🔤 Translation:
 🔤 POST   /api/v1/translation/translate - Translate text
 🔤 POST   /api/v1/translation/speech-to-text - Speech to text
 🔤 POST   /api/v1/translation/text-to-speech - Text to speech
@@ -313,7 +371,6 @@ const startServer = async () => {
 };
 
 console.log("CREDENTIAL PATH:", process.env.GOOGLE_APPLICATION_CREDENTIALS);
-
 
 // ====================
 // 🚪 GRACEFUL SHUTDOWN
