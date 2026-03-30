@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { useTranslation } from '../../hooks/useTranslation';
-import { selectTranslationHistory } from '../../features/translation/translationSlice';
+import { useTranslation } from '../../hooks/useTranslation.js';
+import { selectTranslationHistory } from '../../features/translation/translationSlice.js';
 import {
   ClockIcon,
   DocumentDuplicateIcon,

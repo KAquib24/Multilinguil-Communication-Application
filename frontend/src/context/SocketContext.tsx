@@ -1,8 +1,8 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode, useRef } from 'react';
 import io, { Socket } from 'socket.io-client';
 import { useSelector } from 'react-redux';
-import { selectAccessToken, selectCurrentUser } from '../features/auth/authSlice';
-import { TranslationSocketService } from '../services/translationSocket.service';
+import { selectAccessToken, selectCurrentUser } from '../features/auth/authSlice.js';
+import { TranslationSocketService } from '../services/translationSocket.service.js';
 
 interface SocketContextType {
   socket: Socket | null;

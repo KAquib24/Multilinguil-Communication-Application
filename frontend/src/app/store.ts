@@ -12,10 +12,10 @@ import {
 } from 'redux-persist';
 import storage from 'redux-persist/lib/storage';
 
-import authReducer from '../features/auth/authSlice';
-import chatReducer from '../features/chat/chatSlice';
-import callReducer from '../features/calls/callSlice';
-import translationReducer from '../features/translation/translationSlice';
+import authReducer from '../features/auth/authSlice.js';
+import chatReducer from '../features/chat/chatSlice.js';
+import callReducer from '../features/calls/callSlice.js';
+import translationReducer from '../features/translation/translationSlice.js';
 import { apiSlice } from './apiSlice';
 
 // ✅ Persist only auth slice

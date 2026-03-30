@@ -1,13 +1,13 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useSocket } from '../context/SocketContext';
+import { useSocket } from '../context/SocketContext.js';
 import {
   useGetSupportedLanguagesQuery,
   useTranslateTextMutation,
   useSpeechToTextMutation,
   useTextToSpeechMutation,
   useCreateTranslationSessionMutation,
-} from '../features/translation/translationApi';
+} from '../features/translation/translationApi.js';
 import {
   setSupportedLanguages,
   setSourceLanguage,
@@ -16,15 +16,15 @@ import {
   addToHistory,
   setError,
   addToAudioQueue,
-} from '../features/translation/translationSlice';
-import { RootState } from '../app/store';
+} from '../features/translation/translationSlice.js';
+import { RootState } from '../app/store.js';
 import toast from 'react-hot-toast';
 import {
   selectSupportedLanguages,
   selectSourceLanguage,
   selectTargetLanguage,
   selectTranslationEnabled,
-} from '../features/translation/translationSelectors';
+} from '../features/translation/translationSelectors.js';
 
 interface TranslationOptions {
   sourceLanguage?: string;

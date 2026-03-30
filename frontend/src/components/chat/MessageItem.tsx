@@ -1,8 +1,8 @@
 import React, { useState } from 'react';
 import { useSelector } from 'react-redux';
-import { Message } from '../../features/chat/chatApi';
-import { selectCurrentUser } from '../../features/auth/authSlice';
-import { useChat } from '../../hooks/useChat';
+import { Message } from '../../features/chat/chatApi.js';
+import { selectCurrentUser } from '../../features/auth/authSlice.js';
+import { useChat } from '../../hooks/useChat.js';
 import {
   CheckIcon,
   CheckCircleIcon,

@@ -7,7 +7,7 @@ import {
   selectSourceLanguage,
   selectTargetLanguage,
   selectTranslationEnabled,
-} from '../../features/translation/translationSlice';
+} from '../../features/translation/translationSlice.js';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 
 interface TranslationSettingsProps {

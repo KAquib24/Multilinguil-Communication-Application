@@ -1,4 +1,4 @@
-import { apiSlice } from '../../app/apiSlice';
+import { apiSlice } from '../../app/apiSlice.js';
 
 export interface User {
   _id: string;

@@ -1,5 +1,5 @@
 import { createSelector } from '@reduxjs/toolkit';
-import { RootState } from '../../app/store';
+import { RootState } from '../../app/store.js';
 
 // Base selectors
 const selectTranslationState = (state: RootState) => state.translation;

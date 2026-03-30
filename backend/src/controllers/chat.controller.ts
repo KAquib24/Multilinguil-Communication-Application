@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import { ChatService } from '../services/chat_service'; // ✅ Remove .js extension
+import { ChatService } from '../services/chat_service.js'; // ✅ Remove .js extension
 import createHttpError from 'http-errors'; // ✅ Correct import
 import mongoose from 'mongoose';
 

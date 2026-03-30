@@ -4,7 +4,7 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useDispatch, useSelector } from 'react-redux';
-import { useLoginMutation } from '../features/auth/authApi';
+import { useLoginMutation } from '../features/auth/authApi.js';
 import {
   setCredentials,
   setError,

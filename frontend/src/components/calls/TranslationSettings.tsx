@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useCall } from '../../hooks/useCall';
+import { useCall } from '../../hooks/useCall.js';
 import {
   LanguageIcon,
   ArrowRightIcon,

@@ -1,8 +1,8 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { useChat } from '../../hooks/useChat';
-import { selectChats } from '../../features/chat/chatSlice';
-import { Chat } from '../../features/chat/chatApi';
+import { useChat } from '../../hooks/useChat.js';
+import { selectChats } from '../../features/chat/chatSlice.js';
+import { Chat } from '../../features/chat/chatApi.js';
 import {
   UserGroupIcon,
   UserCircleIcon,

@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { Dialog, Transition } from '@headlessui/react';
 import { Fragment } from 'react';
-import { useGetContactsQuery } from '../../features/users/userApi';
-import { useCreateGroupMutation } from '../../features/chat/chatApi';
+import { useGetContactsQuery } from '../../features/users/userApi.js';
+import { useCreateGroupMutation } from '../../features/chat/chatApi.js';
 import { useDispatch } from 'react-redux';
-import { setActiveChat } from '../../features/chat/chatSlice';
+import { setActiveChat } from '../../features/chat/chatSlice.js';
 import { XMarkIcon, UserGroupIcon, UserCircleIcon, MagnifyingGlassIcon } from '@heroicons/react/24/outline';
 import toast from 'react-hot-toast';
-import { User } from '../../features/auth/authApi';
+import { User } from '../../features/auth/authApi.js';
 
 interface NewGroupModalProps {
   isOpen: boolean;

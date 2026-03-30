@@ -5,7 +5,7 @@ import { PersistGate } from 'redux-persist/integration/react';
 import { Toaster } from 'react-hot-toast';
 import { StreamProvider } from './context/StreamContext';
 
-import { store, persistor } from './app/store';
+import { store, persistor } from './app/store.js';
 import './i18n';
 
 /* Pages */

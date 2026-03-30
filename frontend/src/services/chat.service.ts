@@ -1,5 +1,5 @@
 import { Socket } from 'socket.io-client';
-import { store } from '../app/store';
+import { store } from '../app/store.js';
 import {
   addMessage,
   updateMessage,
@@ -8,8 +8,8 @@ import {
   removeTypingUser,
   updateChat,
   addChat,
-} from '../features/chat/chatSlice';
-import { Message } from '../features/chat/chatApi';
+} from '../features/chat/chatSlice.js';
+import { Message } from '../features/chat/chatApi.js';
 import toast from 'react-hot-toast';
 
 // Extended interface to ensure conversation property exists

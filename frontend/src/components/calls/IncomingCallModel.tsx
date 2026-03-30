@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSelector } from 'react-redux';
-import { useCall } from '../../hooks/useCall';
-import { selectIncomingCall } from '../../features/calls/callSlice';
+import { useCall } from '../../hooks/useCall.js';
+import { selectIncomingCall } from '../../features/calls/callSlice.js';
 import {
   PhoneIcon,
   PhoneXMarkIcon,
