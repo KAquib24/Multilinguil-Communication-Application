@@ -1,5 +1,5 @@
 import axios, { AxiosError, AxiosInstance, AxiosRequestConfig, AxiosResponse } from 'axios';
-import { store } from '../app/store.js';
+import { store } from '../app/store';
 import { logout, setAccessToken } from '../features/auth/authSlice.js';
 
 class HttpService {

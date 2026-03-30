@@ -1,5 +1,5 @@
 import { Socket } from 'socket.io-client';
-import { store } from '../app/store.js';
+import { store } from '../app/store';
 import {
   addMessage,
   updateMessage,

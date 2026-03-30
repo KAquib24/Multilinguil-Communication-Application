@@ -17,7 +17,7 @@ import {
   setError,
   addToAudioQueue,
 } from '../features/translation/translationSlice.js';
-import { RootState } from '../app/store.js';
+import { RootState } from '../app/store';
 import toast from 'react-hot-toast';
 import {
   selectSupportedLanguages,
