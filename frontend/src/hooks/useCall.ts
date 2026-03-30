@@ -81,7 +81,7 @@ export const useCall = () => {
   const [initiateCallApi] = useInitiateCallMutation();
   const [answerCallApi] = useAnswerCallMutation();
   const [rejectCallApi] = useRejectCallMutation();
-  const [endCallApi] = useEndCallMutation();
+  // const [endCallApi] = useEndCallMutation();
   const [updateCallMetadataApi] = useUpdateCallMetadataMutation();
   const { data: iceServersData } = useGetIceServersQuery();
 

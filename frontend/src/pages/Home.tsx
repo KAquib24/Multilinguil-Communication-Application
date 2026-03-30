@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useSelector } from 'react-redux';
 import { useChat } from '../hooks/useChat';
 import MessageItem from '../components/chat/MessageItem';
@@ -7,7 +7,7 @@ import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 
 const Home: React.FC = () => {
   const { messages, activeChat, isLoading } = useChat();
-  const currentUser = useSelector(selectCurrentUser);
+  // const currentUser = useSelector(selectCurrentUser);
 
   // Group messages by date for display
   const groupMessagesByDate = () => {

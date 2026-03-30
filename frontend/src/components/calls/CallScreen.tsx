@@ -20,7 +20,7 @@ import {
 } from "@heroicons/react/24/outline";
 import { formatDuration } from "../../utils/date";
 import { format } from "date-fns";
-import RealTimeTranslation from "../translation/RealTimeTranslation";
+// import RealTimeTranslation from "../translation/RealTimeTranslation";
 // ✅ FIXED: Import from translationSlice, not callSlice
 import { toggleTranslation, setTargetLanguage } from "../../features/translation/translationSlice";
 import { selectTranslationEnabled } from "../../features/translation/translationSelectors";

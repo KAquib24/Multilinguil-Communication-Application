@@ -38,13 +38,13 @@ interface MainLayoutProps {
 }
 
 // Define translation settings type
-interface TranslationSettingsType {
-  enabled: boolean;
-  sourceLanguage: string;
-  targetLanguage: string;
-  autoDetect: boolean;
-  autoPlayAudio: boolean;
-}
+// interface TranslationSettingsType {
+//   enabled: boolean;
+//   sourceLanguage: string;
+//   targetLanguage: string;
+//   autoDetect: boolean;
+//   autoPlayAudio: boolean;
+// }
 
 const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const navigate = useNavigate();
@@ -52,7 +52,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
   const dispatch = useDispatch();
   const user = useSelector(selectCurrentUser);
   const isAuthenticated = useSelector(selectIsAuthenticated);
-  const { startCall, incomingCall, answerCall, rejectCall } = useCall();
+  const { startCall } = useCall();
 
   // Use a default translation settings object since the selector doesn't exist
   const translationSettings = useSelector((state: RootState) => ({
@@ -65,7 +65,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
   const [logoutMutation] = useLogoutMutation();
 
-  const { chats, activeChat, selectChat, sendMessage, isLoading } = useChat();
+  const { chats, activeChat, selectChat, isLoading } = useChat();
 
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);

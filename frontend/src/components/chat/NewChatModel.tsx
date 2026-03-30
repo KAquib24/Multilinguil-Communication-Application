@@ -17,12 +17,12 @@ import { useDispatch, useSelector } from "react-redux"; // ADD useSelector
 import { setActiveChat, addChat } from "../../features/chat/chatSlice";
 import { selectCurrentUser } from "../../features/auth/authSlice"; // ADD this import
 import {
-  UserPlusIcon,
+  // UserPlusIcon,
   MagnifyingGlassIcon,
   XMarkIcon,
   UserCircleIcon,
-  CheckIcon,
-  XMarkIcon as XIcon,
+  // CheckIcon,
+  // XMarkIcon as XIcon,
   ClockIcon,
   EnvelopeIcon,
 } from "@heroicons/react/24/outline";
