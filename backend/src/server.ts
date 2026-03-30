@@ -1,17 +1,15 @@
-import fs from "fs";
+// Handle Google Cloud credentials from environment variable
+import fs from 'fs';
 import path from 'path';
-if (process.env.GOOGLE_CREDENTIALS_JSON) {
-  const filePath = path.join(process.cwd(), "google-credentials.json");
 
-  fs.writeFileSync(
-    filePath,
-    process.env.GOOGLE_CREDENTIALS_JSON
-  );
-
-  process.env.GOOGLE_APPLICATION_CREDENTIALS = filePath;
-
-  console.log("✅ Google credentials file created");
+// Create credentials file from environment variable (for Render deployment)
+if (process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON) {
+  const credentialsPath = path.join(process.cwd(), 'google-credentials.json');
+  fs.writeFileSync(credentialsPath, process.env.GOOGLE_APPLICATION_CREDENTIALS_JSON);
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = credentialsPath;
+  console.log('✅ Google Cloud credentials loaded from environment variable');
 }
+
 // server.ts
 import express, { Application, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';

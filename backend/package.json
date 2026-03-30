@@ -6,6 +6,7 @@
     "start": "node dist/server.js",
     "dev": "nodemon --exec \"npx tsx src/server.ts\"",
     "build": "tsc",
+    "postbuild": "cp -r src/uploads dist/ || true",
     "test": "jest"
   },
   "dependencies": {
