@@ -1,5 +1,5 @@
-import { apiSlice } from '../../app/apiSlice.js';
-import { User } from '../auth/authApi.js';
+import { apiSlice } from '../../app/apiSlice';
+import { User } from '../auth/authApi';
 
 export interface UserResponse {
   success: boolean;

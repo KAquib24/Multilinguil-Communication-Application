@@ -1,4 +1,4 @@
-import { apiSlice } from '../../app/apiSlice.js';
+import { apiSlice } from '../../app/apiSlice';
 
 export const friendRequestApi = apiSlice.injectEndpoints({
   endpoints: (builder) => ({

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { useLiveTranslation } from '../../hooks/useLiveTranslation.js';
+import { useLiveTranslation } from '../../hooks/useLiveTranslation';
 import { useSelector } from 'react-redux';
-import { selectCurrentUser } from '../../features/auth/authSlice.js';
+import { selectCurrentUser } from '../../features/auth/authSlice';
 import {
   MicrophoneIcon,
   SpeakerWaveIcon,

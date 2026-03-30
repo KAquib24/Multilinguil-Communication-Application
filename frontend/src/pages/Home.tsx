@@ -1,8 +1,8 @@
 import React, { useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { useChat } from '../hooks/useChat.js';
-import MessageItem from '../components/chat/MessageItem.js';
-import { selectCurrentUser } from '../features/auth/authSlice.js';
+import { useChat } from '../hooks/useChat';
+import MessageItem from '../components/chat/MessageItem';
+import { selectCurrentUser } from '../features/auth/authSlice';
 import { ChatBubbleLeftRightIcon } from '@heroicons/react/24/outline';
 
 const Home: React.FC = () => {

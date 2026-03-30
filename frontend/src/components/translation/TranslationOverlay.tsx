@@ -1,11 +1,11 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useSelector } from 'react-redux';
-import { useTranslation } from '../../hooks/useTranslation.js';
+import { useTranslation } from '../../hooks/useTranslation';
 import {
   selectSourceLanguage,
   selectTargetLanguage,
   selectTranslationEnabled,
-} from '../../features/translation/translationSlice.js';
+} from '../../features/translation/translationSlice';
 import {
   LanguageIcon,
   SpeakerWaveIcon,

@@ -1,6 +1,6 @@
 import { useEffect, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { useSocket } from '../context/SocketContext.js';
+import { useSocket } from '../context/SocketContext';
 import {
   useGetChatsQuery,
   useGetMessagesQuery,
@@ -10,7 +10,7 @@ import {
   useAddReactionMutation,
   useRemoveReactionMutation,
   useDeleteMessageMutation,
-} from '../features/chat/chatApi.js';
+} from '../features/chat/chatApi';
 import {
   selectActiveChat,
   selectMessages,
@@ -25,8 +25,8 @@ import {
   setLoading,
   setError,
 } from '../features/chat/chatSlice';
-import { ChatSocketService } from '../services/chat.service.js';
-import { Message, SendMessageRequest } from '../features/chat/chatApi.js';
+import { ChatSocketService } from '../services/chat.service';
+import { Message, SendMessageRequest } from '../features/chat/chatApi';
 import toast from 'react-hot-toast';
 
 // Helper to convert Message options to SendMessageRequest

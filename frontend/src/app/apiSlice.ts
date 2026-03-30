@@ -1,7 +1,7 @@
 // src/app/apiSlice.ts
 import { createApi, fetchBaseQuery } from '@reduxjs/toolkit/query/react';
 import type { RootState } from './store';
-import { setAccessToken, logout } from '../features/auth/authSlice.js';
+import { setAccessToken, logout } from '../features/auth/authSlice';
 
 const baseQuery = fetchBaseQuery({
   baseUrl: process.env.REACT_APP_API_URL || 'http://localhost:5000/api/v1',

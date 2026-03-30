@@ -4,8 +4,8 @@ import { yupResolver } from '@hookform/resolvers/yup';
 import * as yup from 'yup';
 import { Link, useNavigate } from 'react-router-dom';
 import { useDispatch } from 'react-redux';
-import { useRegisterMutation } from '../features/auth/authApi.js';
-import { setCredentials, setError, clearError } from '../features/auth/authSlice.js';
+import { useRegisterMutation } from '../features/auth/authApi';
+import { setCredentials, setError, clearError } from '../features/auth/authSlice';
 import AuthLayout from '../components/layout/AuthLayout';
 import AuthInput from '../components/auth/AuthInput';
 import { 

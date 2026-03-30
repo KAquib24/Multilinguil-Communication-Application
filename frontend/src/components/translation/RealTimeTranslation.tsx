@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSelector } from 'react-redux';
-import { useTranslation } from '../../hooks/useTranslation.js';
-import { useSocket } from '../../context/SocketContext.js';
+import { useTranslation } from '../../hooks/useTranslation';
+import { useSocket } from '../../context/SocketContext';
 import {
   selectTranslationEnabled,
   selectSourceLanguage,
   selectTargetLanguage,
-} from '../../features/translation/translationSlice.js';
+} from '../../features/translation/translationSlice';
 import {
   MicrophoneIcon,
   SpeakerWaveIcon,

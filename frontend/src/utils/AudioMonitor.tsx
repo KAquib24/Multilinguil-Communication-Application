@@ -1,6 +1,6 @@
 // src/utils/AudioMonitor.tsx
 import React, { useEffect, useRef } from 'react';
-import { useStreams } from '../context/StreamContext.js';
+import { useStreams } from '../context/StreamContext';
 
 interface AudioMonitorProps {
   showVisualizer?: boolean;
