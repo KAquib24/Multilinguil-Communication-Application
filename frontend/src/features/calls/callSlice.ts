@@ -84,24 +84,14 @@ const callSlice = createSlice({
     
     // Media controls
     toggleMute: (state) => {
-      state.isMuted = !state.isMuted;
-      if (state.localStream) {
-        const audioTracks = state.localStream.getAudioTracks();
-        audioTracks.forEach(track => {
-          track.enabled = !state.isMuted;
-        });
-      }
-    },
+  state.isMuted = !state.isMuted;
+  // ✅ Track enabling/disabling handled in useCall.ts via localStreamRef
+},
 
-    toggleVideo: (state) => {
-      state.isVideoOff = !state.isVideoOff;
-      if (state.localStream) {
-        const videoTracks = state.localStream.getVideoTracks();
-        videoTracks.forEach(track => {
-          track.enabled = !state.isVideoOff;
-        });
-      }
-    },
+toggleVideo: (state) => {
+  state.isVideoOff = !state.isVideoOff;
+  // ✅ Track enabling/disabling handled in useCall.ts
+},
     
     toggleScreenSharing: (state, action: PayloadAction<boolean>) => {
       state.isScreenSharing = action.payload;

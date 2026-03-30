@@ -39,14 +39,14 @@ useEffect(() => {
     auth: {
       token: accessToken,
     },
-    transports: ['websocket', 'polling'], // Allow polling fallback
+    transports: ['polling','websocket'], // Allow polling fallback
     reconnection: true,
     reconnectionAttempts: 10,
     reconnectionDelay: 1000,
     reconnectionDelayMax: 5000,
     timeout: 20000,
     autoConnect: true,
-    forceNew: true, // Force new connection
+    // forceNew: true, // Force new connection
   });
 
   socketInstance.on('connect', () => {
@@ -54,7 +54,7 @@ useEffect(() => {
     setIsConnected(true);
     
     // Authenticate with user ID
-    socketInstance.emit('authenticate', user._id);
+    // socketInstance.emit('authenticate', user._id);
     
     // Initialize translation socket service
     translationSocketRef.current = new TranslationSocketService(socketInstance);

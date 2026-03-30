@@ -150,11 +150,9 @@ export class TranslationController {
       }
       
       const result = await this.speechService.textToSpeech(
-        text,
-        language,
-        voice,
-        speakingRate
-      );
+  text,
+  language
+);
       
       res.status(200).json({
         success: true,

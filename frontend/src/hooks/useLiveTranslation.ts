@@ -25,21 +25,23 @@ interface TranslationAudio {
 }
 
 export const useLiveTranslation = (callId: string) => {
+  // 🔥 ADD THIS HERE (top inside hook)
+  const audioQueueRef = useRef<string[]>([]);
+  const isPlayingRef = useRef(false);
   const dispatch = useDispatch();
   const { socket, translationSocket } = useSocket();
 
   const sourceLanguage = useSelector(selectSourceLanguage);
   const targetLanguage = useSelector(selectTargetLanguage);
   const currentUser = useSelector((state: RootState) => state.auth.user);
-  const token = useSelector((state: RootState) => state.auth.accessToken); // ✅ ADD
+  const token = useSelector((state: RootState) => state.auth.accessToken);
 
   const participants = useSelector((state: RootState) => {
-    // Get participants from active call
     return state.call.activeCall?.participants || [];
   });
 
   const [isTranslating, setIsTranslating] = useState(false);
-  const translatingRef = useRef(false); // ✅ FIX: Use ref to avoid stale state
+  const translatingRef = useRef(false);
   const [activeSpeakers, setActiveSpeakers] = useState<Set<string>>(new Set());
   const [liveSubtitles, setLiveSubtitles] = useState<
     Map<string, TranslationResult>
@@ -48,7 +50,30 @@ export const useLiveTranslation = (callId: string) => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const audioContextRef = useRef<AudioContext | null>(null);
-  const audioQueueRef = useRef<HTMLAudioElement[]>([]);
+
+  // 🔥 ADD THIS
+  const playNext = () => {
+    const queue = audioQueueRef.current;
+
+    if (queue.length === 0) {
+      isPlayingRef.current = false;
+      return;
+    }
+
+    isPlayingRef.current = true;
+
+    const audioBase64 = queue.shift()!;
+    const audioElement = new Audio(`data:audio/ogg;base64,${audioBase64}`);
+
+    audioElement.onended = () => {
+      playNext();
+    };
+
+    audioElement.play().catch((err) => {
+      console.error("Audio play failed:", err);
+      playNext();
+    });
+  };
 
   // ==================== EVENT LISTENERS ====================
 
@@ -59,7 +84,7 @@ export const useLiveTranslation = (callId: string) => {
       const customEvent = event as CustomEvent;
       const { speakerId, original, translated, isFinal } = customEvent.detail;
 
-      console.log("📝 translation result", original, translated); // ✅ DEBUG
+      console.log("📝 translation result", original, translated);
 
       // Update live subtitles
       setLiveSubtitles((prev) => {
@@ -95,26 +120,18 @@ export const useLiveTranslation = (callId: string) => {
       }
     };
 
-    const handleTranslationAudio = (event: Event) => {
-      const customEvent = event as CustomEvent;
-      const { speakerId, audio } = customEvent.detail;
+    const handleTranslationAudio = (event: any) => {
+      const data = event.detail;
 
-      // Create audio element and play
-      const audioElement = new Audio(`data:audio/webm;base64,${audio}`);
-      audioElement.play().catch(console.error);
+      console.log("🔊 Queueing audio...");
 
-      // Add to queue for tracking
-      audioQueueRef.current.push(audioElement);
+      audioQueueRef.current.push(data.audio);
 
-      // Clean up after playing
-      audioElement.onended = () => {
-        audioQueueRef.current = audioQueueRef.current.filter(
-          (a) => a !== audioElement,
-        );
-      };
+      if (!isPlayingRef.current) {
+        playNext();
+      }
     };
 
-    // Add event listeners
     window.addEventListener("translation:result", handleTranslationResult);
     window.addEventListener("translation:audio", handleTranslationAudio);
 
@@ -164,96 +181,82 @@ export const useLiveTranslation = (callId: string) => {
 
   // ==================== START TRANSLATION ====================
 
+  const arrayBufferToBase64 = (buffer: ArrayBuffer) => {
+    let binary = "";
+    const bytes = new Uint8Array(buffer);
+    const chunkSize = 0x8000;
+
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+      const chunk = bytes.subarray(i, i + chunkSize);
+      for (let j = 0; j < chunk.length; j++) {
+        binary += String.fromCharCode(chunk[j]);
+      }
+    }
+
+    return btoa(binary);
+  };
+
   const startTranslation = useCallback(async () => {
     if (!translationSocket || !callId) return;
 
     try {
-      console.log("🔤 Starting translation for call:", callId);
-
-      // First, create a translation session via API
-      // const token = useSelector((state: RootState) => state.auth.accessToken);
-      const response = await fetch(
-        `${process.env.REACT_APP_API_URL}/translation/sessions`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${token}`,
-          },
-
-          body: JSON.stringify({
-            participants: [
-              currentUser?._id,
-              ...participants.map((p: any) => p.userId?._id || p.userId),
-            ],
-            sourceLanguage,
-            targetLanguage,
-            callId,
-          }),
-        },
-      );
-
-      const sessionData = await response.json();
-      const sessionId =
-        sessionData.session?._id || sessionData.data?.session?._id;
-
-      // const sessionData = await response.json();
-      // const sessionId =
-      //   sessionData.session?._id || sessionData.data?.session?._id;
-
-      // if (!sessionId) {
-      //   throw new Error("Failed to create translation session");
-      // }
-
-      // console.log("✅ Translation session created:", sessionId);
-
-      // Get microphone access
+      // 🎤 Step 1: Get mic
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: true,
           noiseSuppression: true,
           autoGainControl: true,
-          sampleRate: 48000,
+          sampleRate: 16000,
           channelCount: 1,
         },
       });
 
       streamRef.current = stream;
 
-      // Create audio context for monitoring
-      const audioContext = new AudioContext();
+      // 🎧 Step 2: Audio Context
+      const audioContext = new AudioContext({ sampleRate: 16000 });
       audioContextRef.current = audioContext;
 
-      // Create media recorder for streaming - FIXED MIME TYPE
-      const mediaRecorder = new MediaRecorder(stream, {
-        mimeType: "audio/webm", // ✅ FIXED: Removed codecs=opus
-        audioBitsPerSecond: 64000, // ✅ FIXED: Higher bitrate
-      });
+      // 🎯 Step 3: Source
+      const source = audioContext.createMediaStreamSource(stream);
+      (streamRef as any).source = source;
 
-      mediaRecorderRef.current = mediaRecorder;
+      // ⚠️ Step 4: ScriptProcessor (correct one)
+      const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-      // Handle data available
-      mediaRecorder.ondataavailable = (event) => {
-        // ✅ FIX: Use ref instead of state
-        if (event.data.size > 0 && translatingRef.current) {
-          console.log("🎤 sending audio chunk"); // ✅ DEBUG
+      processor.onaudioprocess = (event) => {
+        if (!translatingRef.current) return;
 
-          // Convert blob to base64
-          const reader = new FileReader();
-          reader.onloadend = () => {
-            const base64 = reader.result?.toString().split(",")[1];
-            if (base64) {
-              translationSocket.sendAudioChunk(callId, base64);
-            }
-          };
-          reader.readAsDataURL(event.data);
+        const inputData = event.inputBuffer.getChannelData(0);
+
+        // 🔁 Float32 → Int16
+        const int16Data = new Int16Array(inputData.length);
+        for (let i = 0; i < inputData.length; i++) {
+          const s = Math.max(-1, Math.min(1, inputData[i]));
+          int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
         }
+
+        // ✅ OPTION 1 (safe): base64
+        const base64 = arrayBufferToBase64(int16Data.buffer);
+        translationSocket.sendAudioChunk(callId, base64);
+
+        // ✅ OPTION 2 (better - if backend supports binary)
+        // translationSocket.sendAudioChunk(callId, int16Data.buffer);
       };
 
-      // Start recording - send chunks every 500ms
-      mediaRecorder.start(500);
+      // 🔌 Step 5: Connect graph (NO ECHO)
+      source.connect(processor);
 
-      // Start translation session
+      const gainNode = audioContext.createGain();
+      gainNode.gain.value = 0;
+
+      processor.connect(gainNode);
+      gainNode.connect(audioContext.destination);
+
+      // 💾 Store refs
+      (streamRef as any).processor = processor;
+
+      // 🚀 Start backend translation
       translationSocket.startTranslation(
         callId,
         targetLanguage,
@@ -261,67 +264,44 @@ export const useLiveTranslation = (callId: string) => {
       );
 
       setIsTranslating(true);
-      translatingRef.current = true; // ✅ FIX: Update ref
+      translatingRef.current = true;
 
-      console.log("🔤 Live translation started");
+      console.log("🎤 Real-time streaming translation started");
     } catch (error: any) {
-      console.error("Failed to start translation:", error);
-      dispatch(setError(error.message || "Failed to start translation"));
+      console.error("❌ Failed to start translation:", error);
       throw error;
     }
-  }, [
-    translationSocket,
-    callId,
-    targetLanguage,
-    sourceLanguage,
-    currentUser,
-    participants,
-    dispatch,
-  ]);
-
-  // ==================== STOP TRANSLATION ====================
+  }, [translationSocket, callId, targetLanguage, sourceLanguage]);
 
   const stopTranslation = useCallback(() => {
     if (!translationSocket || !callId) return;
 
-    console.log("🛑 Stopping translation");
-
-    // Stop media recorder
-    if (
-      mediaRecorderRef.current &&
-      mediaRecorderRef.current.state !== "inactive"
-    ) {
-      mediaRecorderRef.current.stop();
+    // Cleanup AudioContext processor
+    const processor = (streamRef as any).processor;
+    if (processor) {
+      processor.disconnect();
+      processor.onaudioprocess = null;
     }
 
-    // Stop all tracks
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((track) => track.stop());
-      streamRef.current = null;
-    }
-
-    // Close audio context
     if (audioContextRef.current) {
       audioContextRef.current.close();
       audioContextRef.current = null;
     }
 
-    // Stop all playing audio
-    audioQueueRef.current.forEach((audio) => {
-      audio.pause();
-      audio.src = "";
-    });
-    audioQueueRef.current = [];
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    }
 
-    // Stop translation session
+    const source = (streamRef as any).source;
+    if (source) {
+      source.disconnect();
+    }
+
     translationSocket.stopTranslation(callId);
-
     setIsTranslating(false);
-    translatingRef.current = false; // ✅ FIX: Update ref
+    translatingRef.current = false;
     setLiveSubtitles(new Map());
-    setActiveSpeakers(new Set());
-
-    console.log("🔤 Live translation stopped");
   }, [translationSocket, callId]);
 
   // ==================== CHANGE LANGUAGE ====================
@@ -344,8 +324,6 @@ export const useLiveTranslation = (callId: string) => {
     [liveSubtitles],
   );
 
-  // ❌ REMOVED: Auto-start effect - translation starts only when user clicks Start
-
   // Cleanup on unmount
   useEffect(() => {
     return () => {
@@ -353,7 +331,7 @@ export const useLiveTranslation = (callId: string) => {
         stopTranslation();
       }
     };
-  }, []);
+  }, [isTranslating, stopTranslation]);
 
   return {
     isTranslating,

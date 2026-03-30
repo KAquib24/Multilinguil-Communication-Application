@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Provider } from 'react-redux';
 import { PersistGate } from 'redux-persist/integration/react';
 import { Toaster } from 'react-hot-toast';
+import { StreamProvider } from './context/StreamContext';
 
 import { store, persistor } from './app/store';
 import './i18n';
@@ -25,6 +26,7 @@ function App() {
     <Provider store={store}>
       <PersistGate loading={null} persistor={persistor}>
         <SocketProvider>
+          <StreamProvider>
           <Router
             future={{
               v7_startTransition: true,
@@ -80,6 +82,7 @@ function App() {
               </Routes>
             </div>
           </Router>
+          </StreamProvider>
         </SocketProvider>
       </PersistGate>
     </Provider>

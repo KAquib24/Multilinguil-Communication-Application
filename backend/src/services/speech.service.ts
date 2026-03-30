@@ -38,6 +38,7 @@ interface RealTimeTranslationResult {
 }
 
 export class SpeechService {
+  private audioBuffers: Map<string, Buffer[]> = new Map();
   private config: SpeechConfig;
   private uploadDir: string;
   // ✅ ADD TTS CLIENT
@@ -123,7 +124,7 @@ export class SpeechService {
       `https://speech.googleapis.com/v1/speech:recognize?key=${this.config.apiKey}`,
       {
         config: {
-          encoding: audioFormat === "webm" ? "WEBM_OPUS" : "LINEAR16",
+          encoding: "LINEAR16",
           sampleRateHertz: 16000,
           languageCode: language,
           enableAutomaticPunctuation: true,
@@ -217,10 +218,7 @@ export class SpeechService {
     text: string,
     language: string = "en-US",
   ): Promise<SpeechSynthesisResult> {
-    throw createHttpError(
-      501,
-      "Text-to-speech is handled by LiveTranslationService",
-    );
+    return this.googleTextToSpeechSDK(text, language);
   }
 
   // ✅ NEW: Fixed Google TTS using SDK (RECOMMENDED)
@@ -345,18 +343,18 @@ export class SpeechService {
   // Real-time speech translation pipeline (Enhanced for streaming)
   async realTimeTranslationPipeline(
     audioBuffer: Buffer,
-    sourceLanguage: string,
-    targetLanguage: string,
+    sourceLanguage: string = "en-US",
+    targetLanguage: string = "en",
     userId?: string,
     isFinal: boolean = true,
   ): Promise<RealTimeTranslationResult> {
     try {
       // Step 1: Speech to text
       const sttResult = await this.speechToText(
-        audioBuffer,
-        sourceLanguage,
-        "webm",
-      );
+  audioBuffer,
+  sourceLanguage,
+  "pcm",
+);
 
       // Step 2: Translate text
       const translationService = new (
@@ -370,12 +368,20 @@ export class SpeechService {
 
       // Step 3: Text to speech (optional, for audio output)
       let translatedAudioUrl: string | undefined;
-      if (translationResult.confidence > 0.7 && isFinal) {
+      if (isFinal) {
         const ttsResult = await this.textToSpeech(
           translationResult.translatedText,
           targetLanguage,
         );
-        translatedAudioUrl = ttsResult.audioUrl;
+
+        // 🔥 ADD THIS PART
+        const fullPath = path.join(process.cwd(), ttsResult.audioUrl);
+
+        const audioBuffer = fs.readFileSync(fullPath);
+        const base64Audio = audioBuffer.toString("base64");
+
+        // ✅ send base64 instead of URL
+        translatedAudioUrl = base64Audio;
       }
 
       return {
@@ -394,28 +400,45 @@ export class SpeechService {
 
   // Stream processing for WebSocket real-time translation
   async processStreamingAudio(
-    audioChunk: Buffer,
-    sessionId: string,
-    sourceLanguage: string,
-    targetLanguage: string,
-    userId: string,
-  ): Promise<RealTimeTranslationResult> {
-    try {
-      // Process audio chunk
-      const result = await this.realTimeTranslationPipeline(
-        audioChunk,
-        sourceLanguage,
-        targetLanguage,
-        userId,
-        false, // Stream chunks are not final
-      );
+  audioChunk: Buffer,
+  sessionId: string,
+  sourceLanguage: string,
+  targetLanguage: string,
+  userId: string,
+): Promise<RealTimeTranslationResult | null> {
 
-      return result;
-    } catch (error: any) {
-      console.error("Stream processing error:", error.message);
-      throw error;
-    }
+  // create buffer if not exists
+  if (!this.audioBuffers.has(sessionId)) {
+    this.audioBuffers.set(sessionId, []);
   }
+
+  const bufferArray = this.audioBuffers.get(sessionId)!;
+
+  // push incoming chunk
+  bufferArray.push(audioChunk);
+
+  // wait for enough audio (~1–2 sec)
+  if (bufferArray.length < 20) {
+    return null; // ❌ do not process yet
+  }
+
+  // merge chunks
+  const mergedBuffer = Buffer.concat(bufferArray);
+
+  // clear buffer
+  this.audioBuffers.set(sessionId, []);
+
+  console.log("🔥 Processing buffered audio...");
+
+  // process full chunk
+  return await this.realTimeTranslationPipeline(
+    mergedBuffer,
+    sourceLanguage,
+    targetLanguage,
+    userId,
+    true
+  );
+}
 
   // Helper methods
   private getDefaultVoice(languageCode: string): string {

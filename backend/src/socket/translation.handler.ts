@@ -20,6 +20,8 @@ LiveTranslationService.emitTranslationResult = (callId, userId, result) => {
     speakerId: userId,
     ...result
   });
+  
+  console.log(`📤 Translation result emitted for call ${callId} from user ${userId}`);
 };
 
 LiveTranslationService.emitAudioResult = (callId, userId, audioBuffer) => {
@@ -38,79 +40,107 @@ LiveTranslationService.emitAudioResult = (callId, userId, audioBuffer) => {
     audio: audioBase64,
     timestamp: new Date()
   });
+  
+  console.log(`📤 Audio translation emitted for call ${callId} from user ${userId}, size: ${audioBuffer.length} bytes`);
 };
 
 export const setupTranslationHandlers = (io: Server, socket: Socket) => {
   const userId = socket.data.userId as string;
   
+  console.log(`🔊 Setting up translation handlers for user ${userId}, socket ID: ${socket.id}`);
+
   /**
    * Start translation for a call
    */
-  // In backend/src/socket/translation.handler.ts
-// Around line 70-80, update the error handling:
-
-socket.on('translation:start', async (data) => {
-  try {
-    const { callId, targetLanguage, sourceLanguage } = data;
-    
-    if (!userId) {
-      socket.emit('translation:error', { 
-        message: 'User not authenticated' 
-      });
-      return;
-    }
-    
-    // Verify user is in the call
-    const call = await Call.findOne({ 
-      callId,
-      'participants.userId': userId 
-    });
-    
-    if (!call) {
-      socket.emit('translation:error', { 
-        message: 'Not a participant in this call' 
-      });
-      return;
-    }
-    
+  socket.on('translation:start', async (data) => {
     try {
-      // Start translation session
-      LiveTranslationService.startSession(
-        callId,
-        userId,
-        targetLanguage,
-        sourceLanguage
-      );
+      const { callId, targetLanguage, sourceLanguage } = data;
       
-      // Notify user
-      socket.emit('translation:started', {
+      console.log(`🔤 Translation start requested:`, {
+        userId,
         callId,
         targetLanguage,
-        sourceLanguage: sourceLanguage || 'auto',
-        message: 'Translation enabled'
+        sourceLanguage,
+        timestamp: new Date().toISOString()
       });
       
-      // Notify other participants
-      socket.to(`call:${callId}`).emit('translation:user-enabled', {
-        userId,
-        targetLanguage
+      if (!userId) {
+        socket.emit('translation:error', { 
+          message: 'User not authenticated' 
+        });
+        return;
+      }
+      
+      if (!callId) {
+        socket.emit('translation:error', { 
+          message: 'Call ID is required' 
+        });
+        return;
+      }
+      
+      if (!targetLanguage) {
+        socket.emit('translation:error', { 
+          message: 'Target language is required' 
+        });
+        return;
+      }
+      
+      // Verify user is in the call
+      const call = await Call.findOne({ 
+        callId,
+        'participants.userId': userId 
       });
       
-      console.log(`🔤 Translation started for user ${userId} in call ${callId}`);
-    } catch (serviceError: any) {
-      console.error('Translation service error:', serviceError);
+      if (!call) {
+        console.error(`User ${userId} not in call ${callId}`);
+        socket.emit('translation:error', { 
+          message: 'Not a participant in this call' 
+        });
+        return;
+      }
+      
+      try {
+        // Start translation session
+        LiveTranslationService.startSession(
+          callId,
+          userId,
+          targetLanguage,
+          sourceLanguage || 'auto'
+        );
+        
+        console.log(`✅ Translation session started for user ${userId} in call ${callId}`);
+        
+        // Notify user
+        socket.emit('translation:started', {
+          callId,
+          targetLanguage,
+          sourceLanguage: sourceLanguage || 'auto',
+          message: 'Translation enabled',
+          timestamp: new Date().toISOString()
+        });
+        
+        // Notify other participants
+        socket.to(`call:${callId}`).emit('translation:user-enabled', {
+          userId,
+          targetLanguage,
+          timestamp: new Date().toISOString()
+        });
+        
+      } catch (serviceError: any) {
+        console.error('Translation service error:', serviceError);
+        socket.emit('translation:error', { 
+          message: serviceError.message || 'Translation service unavailable',
+          details: serviceError.toString()
+        });
+      }
+      
+    } catch (error: any) {
+      console.error('Translation start error:', error);
       socket.emit('translation:error', { 
-        message: serviceError.message || 'Translation service unavailable'
+        message: error.message || 'Failed to start translation' 
       });
     }
-    
-  } catch (error: any) {
-    console.error('Translation start error:', error);
-    socket.emit('translation:error', { 
-      message: error.message || 'Failed to start translation' 
-    });
-  }
-});
+  });
   
   /**
    * Receive audio chunk for translation
@@ -119,28 +149,113 @@ socket.on('translation:start', async (data) => {
     try {
       const { callId, audioChunk } = data;
       
-      if (!userId || !callId) return;
+      if (!userId) {
+        console.error('❌ No userId in socket data');
+        return;
+      }
+      
+      if (!callId) {
+        console.error('❌ No callId in audio chunk data');
+        return;
+      }
+      
+      if (!audioChunk) {
+        console.error('❌ No audioChunk in data');
+        return;
+      }
+      
+      console.log("🎧 Audio chunk received:", {
+        callId,
+        userId,
+        chunkType: typeof audioChunk,
+        chunkLength: audioChunk?.length || 0,
+        timestamp: new Date().toISOString()
+      });
       
       // Convert base64 back to buffer if needed
       const audioBuffer = typeof audioChunk === 'string'
         ? Buffer.from(audioChunk, 'base64')
         : audioChunk;
       
-      // Process the chunk
-      const processed = LiveTranslationService.processAudioChunk(
+      console.log("🎧 Buffer created:", {
+        bufferLength: audioBuffer.length,
+        isBuffer: Buffer.isBuffer(audioBuffer),
+        firstFewBytes: audioBuffer.slice(0, 10).toString('hex')
+      });
+      
+      // ✅ RETRY LOGIC: Try up to 3 times if session not ready
+      let processed = false;
+      for (let i = 0; i < 3; i++) {
+        processed = LiveTranslationService.processAudioChunk(
+          callId,
+          userId,
+          audioBuffer
+        );
+        
+        if (processed) {
+          if (i > 0) {
+            console.log(`✅ Processed on retry #${i + 1}`);
+          }
+          break;
+        }
+        
+        console.log(`⏳ Session not ready, retry #${i + 1} in 200ms...`);
+        await new Promise(resolve => setTimeout(resolve, 200));
+      }
+      
+      console.log("🎧 Chunk processing result:", {
         callId,
         userId,
-        audioBuffer
-      );
-      console.log("🎧 chunk received", audioBuffer.length);
+        processed: processed,
+        bufferSize: audioBuffer.length,
+        timestamp: new Date().toISOString()
+      });
       
       if (!processed) {
-        // Session might not exist - auto-start with default language?
-        console.log(`No active session for user ${userId} in call ${callId}`);
+        // Session might not exist - auto-start with default language
+        console.log(`⚠️ No active session for user ${userId} in call ${callId} after retries, attempting to auto-start...`);
+        
+        // Try to auto-start with default language (English)
+        try {
+          LiveTranslationService.startSession(
+            callId,
+            userId,
+            'en', // Default target language
+            'auto' // Auto-detect source
+          );
+          
+          console.log(`✅ Auto-started translation for user ${userId} in call ${callId}`);
+          
+          // Wait a bit for session to initialize
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          // Try processing again
+          const retryProcessed = LiveTranslationService.processAudioChunk(
+            callId,
+            userId,
+            audioBuffer
+          );
+          
+          console.log(`🎧 Retry processing result after auto-start:`, retryProcessed);
+          
+          if (retryProcessed) {
+            socket.emit('translation:started', {
+              callId,
+              targetLanguage: 'en',
+              sourceLanguage: 'auto',
+              message: 'Translation auto-started',
+              timestamp: new Date().toISOString()
+            });
+          }
+          
+        } catch (startError: any) {
+          console.error('❌ Auto-start failed:', startError);
+        }
       }
       
     } catch (error: any) {
-      console.error('Audio chunk processing error:', error);
+      console.error('❌ Audio chunk processing error:', error);
+      console.error('Error stack:', error.stack);
     }
   });
   
@@ -151,22 +266,29 @@ socket.on('translation:start', async (data) => {
     try {
       const { callId } = data;
       
-      if (!userId || !callId) return;
+      if (!userId || !callId) {
+        console.error('❌ Missing userId or callId for translation:stop');
+        return;
+      }
+      
+      console.log(`🛑 Stopping translation for user ${userId} in call ${callId}`);
       
       LiveTranslationService.stopSession(callId, userId);
       
       // Notify user
       socket.emit('translation:stopped', {
         callId,
-        message: 'Translation disabled'
+        message: 'Translation disabled',
+        timestamp: new Date().toISOString()
       });
       
       // Notify other participants
       socket.to(`call:${callId}`).emit('translation:user-disabled', {
-        userId
+        userId,
+        timestamp: new Date().toISOString()
       });
       
-      console.log(`🔤 Translation stopped for user ${userId} in call ${callId}`);
+      console.log(`✅ Translation stopped for user ${userId} in call ${callId}`);
       
     } catch (error: any) {
       console.error('Translation stop error:', error);
@@ -183,30 +305,48 @@ socket.on('translation:start', async (data) => {
     try {
       const { callId, targetLanguage } = data;
       
-      if (!userId || !callId) return;
+      if (!userId || !callId) {
+        console.error('❌ Missing userId or callId for translation:change-language');
+        return;
+      }
+      
+      if (!targetLanguage) {
+        console.error('❌ Missing targetLanguage for translation:change-language');
+        return;
+      }
+      
+      console.log(`🔄 Changing language for user ${userId} in call ${callId} to ${targetLanguage}`);
       
       // Stop current session
       LiveTranslationService.stopSession(callId, userId);
+      
+      // Wait a bit for cleanup
+      await new Promise(resolve => setTimeout(resolve, 100));
       
       // Start new session with new language
       LiveTranslationService.startSession(
         callId,
         userId,
-        targetLanguage
+        targetLanguage,
+        'auto'
       );
       
       // Notify user
       socket.emit('translation:language-changed', {
         callId,
         targetLanguage,
-        message: `Language changed to ${targetLanguage}`
+        message: `Language changed to ${targetLanguage}`,
+        timestamp: new Date().toISOString()
       });
       
       // Notify other participants
       socket.to(`call:${callId}`).emit('translation:user-language-changed', {
         userId,
-        targetLanguage
+        targetLanguage,
+        timestamp: new Date().toISOString()
       });
+      
+      console.log(`✅ Language changed for user ${userId} in call ${callId} to ${targetLanguage}`);
       
     } catch (error: any) {
       console.error('Language change error:', error);
@@ -220,6 +360,8 @@ socket.on('translation:start', async (data) => {
    * Get available languages
    */
   socket.on('translation:get-languages', () => {
+    console.log(`📋 Sending available languages to user ${userId}`);
+    
     const languages = [
       { code: 'en', name: 'English', nativeName: 'English' },
       { code: 'es', name: 'Spanish', nativeName: 'Español' },
@@ -238,12 +380,23 @@ socket.on('translation:start', async (data) => {
   });
   
   /**
+   * Debug endpoint to get session info
+   */
+  socket.on('translation:debug', () => {
+    const info = LiveTranslationService.getSessionInfo();
+    socket.emit('translation:debug-info', info);
+    console.log('📊 Debug info sent:', info);
+  });
+  
+  /**
    * Handle user disconnect - cleanup sessions
    */
   socket.on('disconnect', () => {
     if (userId) {
-      console.log(`🧹 Cleaning up translation sessions for disconnected user ${userId}`);
+      console.log(`🧹 User ${userId} disconnected, cleaning up translation sessions`);
       // Note: We don't have callId here, so cleanup will happen via timeout
     }
   });
+  
+  console.log(`✅ Translation handlers setup for user ${userId}`);
 };

@@ -13,9 +13,19 @@ export class TranslationSocketService {
   private socket: Socket | null = null;
 
   constructor(socket: Socket) {
-    this.socket = socket;
-    this.setupListeners();
-  }
+  this.socket = socket;
+
+  // ✅ ADD THIS
+  this.socket.on("translation:audio", (data) => {
+    console.log("🔊 Received translation audio from backend:", data);
+
+    window.dispatchEvent(
+      new CustomEvent("translation:audio", {
+        detail: data,
+      })
+    );
+  });
+}
 
   private setupListeners() {
   if (!this.socket) return;

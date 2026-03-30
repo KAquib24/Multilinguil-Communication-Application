@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { useSocket } from "../context/SocketContext";
+import { useStreams } from "../context/StreamContext";
 import {
   useInitiateCallMutation,
   useAnswerCallMutation,
@@ -12,8 +13,6 @@ import {
 import {
   selectActiveCall,
   selectIncomingCall,
-  selectLocalStream,
-  selectRemoteStream,
   selectIsMuted,
   selectIsVideoOff,
   selectIsScreenSharing,
@@ -21,8 +20,6 @@ import {
   selectIceServers,
   setActiveCall,
   setIncomingCall,
-  setLocalStream,
-  setRemoteStream,
   setIsCalling,
   setIsRinging,
   setIsInCall,
@@ -61,22 +58,22 @@ enum CallType {
 export const useCall = () => {
   const dispatch = useDispatch();
   const { socket, isConnected } = useSocket();
+  const { setLocalStream, setRemoteStream, localStreamRef, remoteStreamRef } =
+    useStreams();
 
-  // Selectors
+  // Selectors - REMOVED localStream and remoteStream from Redux selectors
   const activeCall = useSelector(selectActiveCall);
   const incomingCall = useSelector(selectIncomingCall);
-  const localStream = useSelector(selectLocalStream);
-  const remoteStream = useSelector(selectRemoteStream);
   const isMuted = useSelector(selectIsMuted);
   const isVideoOff = useSelector(selectIsVideoOff);
   const isScreenSharing = useSelector(selectIsScreenSharing);
   const isRecording = useSelector(selectIsRecording);
-  
+
   // ✅ FIXED: These now come from translationSlice
   const translationEnabled = useSelector(selectTranslationEnabled);
   const sourceLanguage = useSelector(selectSourceLanguage);
   const targetLanguage = useSelector(selectTargetLanguage);
-  
+
   const iceServers = useSelector(selectIceServers);
   const currentUser = useSelector(selectCurrentUser);
 
@@ -88,7 +85,7 @@ export const useCall = () => {
   const [updateCallMetadataApi] = useUpdateCallMetadataMutation();
   const { data: iceServersData } = useGetIceServersQuery();
 
-  // Refs
+  // Refs - using StreamContext
   const webrtcServiceRef = useRef<WebRTCService | null>(null);
   const callSocketRef = useRef<CallSocketService | null>(null);
   const screenStreamRef = useRef<MediaStream | null>(null);
@@ -121,6 +118,7 @@ export const useCall = () => {
     };
   }, [socket, dispatch]);
 
+  // ✅ FIXED: handleCallEndedEvent using StreamContext
   useEffect(() => {
     if (!socket) return;
 
@@ -129,28 +127,30 @@ export const useCall = () => {
         "📴 Global Call End Signal Received - Cleaning up all streams",
       );
 
-      // 1. Camera/Mic band karo
+      // Stop all tracks from ref
+      const localStream = localStreamRef.current;
       if (localStream) {
-        localStream.getTracks().forEach((track) => {
+        // ✅ explicit type
+        localStream.getTracks().forEach((track: MediaStreamTrack) => {
           track.stop();
           console.log("Stopped track:", track.kind);
         });
-        dispatch(setLocalStream(null));
+        setLocalStream(null);
       }
 
-      // 2. Screen share band karo
+      // Stop screen share
       if (screenStreamRef.current) {
         screenStreamRef.current.getTracks().forEach((track) => track.stop());
         screenStreamRef.current = null;
       }
 
-      // 3. WebRTC band karo
+      // Cleanup WebRTC
       if (webrtcServiceRef.current) {
         webrtcServiceRef.current.cleanupAll();
       }
 
-      // 4. Sab reset karo
-      dispatch(setRemoteStream(null));
+      // Reset remote stream and Redux state
+      setRemoteStream(null);
       dispatch(resetCallState());
     };
 
@@ -159,7 +159,7 @@ export const useCall = () => {
     return () => {
       socket.off("call:ended", handleCallEndedEvent);
     };
-  }, [socket, localStream, dispatch]);
+  }, [socket, dispatch, setLocalStream, setRemoteStream]);
 
   useEffect(() => {
     if (!socket) return;
@@ -176,6 +176,30 @@ export const useCall = () => {
     };
   }, [socket, dispatch]);
 
+  // 🔄 Rejoin call room automatically after socket reconnect
+  useEffect(() => {
+    if (!socket) return;
+
+    const handleReconnect = () => {
+      if (!activeCall) return;
+
+      console.log(
+        "🔁 Socket reconnected, rejoining call room:",
+        activeCall.callId,
+      );
+
+      socket.emit("call:join-room", {
+        callId: activeCall.callId,
+      });
+    };
+
+    socket.on("connect", handleReconnect);
+
+    return () => {
+      socket.off("connect", handleReconnect);
+    };
+  }, [socket, activeCall]);
+
   // Initialize WebRTC service with ICE servers
   useEffect(() => {
     if (iceServersData?.iceServers && iceServers.length === 0) {
@@ -189,41 +213,25 @@ export const useCall = () => {
 
         (window as any).webrtc = webrtcServiceRef.current;
         console.log("✅ WebRTC exposed to window");
-
-        // ✅ Set up remote stream callback immediately after creating service
-        webrtcServiceRef.current.setOnRemoteStream((peerId, stream) => {
-          console.log("🎥 Remote stream received from peer:", peerId);
-
-          (window as any).remoteStream = stream;
-
-          dispatch(setRemoteStream(stream));
-        });
-
-        webrtcServiceRef.current.setOnStreamEnded((peerId) => {
-          console.log("🎥 Remote stream ended from peer:", peerId);
-          dispatch(setRemoteStream(null));
-        });
       }
     }
   }, [iceServersData, iceServers, dispatch]);
 
-  // ✅ Set up WebRTC callbacks (alternative approach if service already exists)
+  // ✅ FIXED: Set up WebRTC remote stream callback with StreamContext
   useEffect(() => {
     if (webrtcServiceRef.current) {
       webrtcServiceRef.current.setOnRemoteStream((peerId, stream) => {
         console.log("🎥 Remote stream received from peer:", peerId);
-
         (window as any).remoteStream = stream;
-
-        dispatch(setRemoteStream(stream));
+        setRemoteStream(stream);
       });
 
       webrtcServiceRef.current.setOnStreamEnded((peerId) => {
         console.log("🎥 Remote stream ended from peer:", peerId);
-        dispatch(setRemoteStream(null));
+        setRemoteStream(null);
       });
     }
-  }, [dispatch]);
+  }, [setRemoteStream]);
 
   // Initialize socket service
   useEffect(() => {
@@ -234,7 +242,7 @@ export const useCall = () => {
 
       callSocketRef.current = new CallSocketService(
         socket,
-        webrtcServiceRef.current
+        webrtcServiceRef.current,
       );
 
       console.log("⚡ CallSocketService CREATED FRESH");
@@ -244,37 +252,28 @@ export const useCall = () => {
         callSocketRef.current = null;
       };
     }
-  }, [socket, isConnected, webrtcServiceRef.current]);
+  }, [socket, isConnected]);
 
   // Get local media stream
   const getLocalMedia = useCallback(
     async (constraints: MediaStreamConstraints) => {
       const stream = await navigator.mediaDevices.getUserMedia(constraints);
+      console.log("NEW STREAM CREATED", stream.getAudioTracks()[0]?.readyState);
 
-      console.log("NEW STREAM CREATED");
-      console.log(stream.getAudioTracks()[0].readyState);
-
-      // Stop old stream safely BEFORE replacing
-      if (localStream) {
-        localStream.getTracks().forEach((track) => {
-          if (track.readyState === "live") {
-            track.stop();
-          }
+      const currentStream = localStreamRef.current;
+      if (currentStream) {
+        currentStream.getTracks().forEach((track) => {
+          if (track.readyState === "live") track.stop();
         });
       }
 
-      dispatch(setLocalStream(stream));
-
-      (window as any).localStream = stream;
-
-      // 🔥 ADD LOCAL TRACKS TO ALL PEERS
-      if (webrtcServiceRef.current) {
-        webrtcServiceRef.current.addLocalStreamToAll(stream);
-      }
+      setLocalStream(stream); // ✅ Stores in ref + window + fires version event
+      // ✅ Don't call addLocalStreamToAll here - no peer connections exist yet
+      // Tracks are added in handleCallAnswered and handleOffer instead
 
       return stream;
     },
-    [dispatch, localStream],
+    [setLocalStream, localStreamRef],
   );
 
   // Start a call
@@ -287,7 +286,12 @@ export const useCall = () => {
       try {
         // 1. Get local media based on call type
         const constraints: MediaStreamConstraints = {
-          audio: true,
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 48000,
+          },
           video:
             type === "video"
               ? {
@@ -333,6 +337,10 @@ export const useCall = () => {
 
         // 4. Update Redux State
         dispatch(setActiveCall(callData));
+
+        socket?.emit("call:join-room", {
+          callId: callData.callId,
+        });
         dispatch(setIsCalling(false));
         dispatch(setIsInCall(true));
 
@@ -341,8 +349,10 @@ export const useCall = () => {
         return callData;
       } catch (error: any) {
         console.error("Start call error:", error);
-        if (localStream) {
-          localStream.getTracks().forEach((track) => track.stop());
+        const currentStream = localStreamRef.current;
+        if (currentStream) {
+          currentStream.getTracks().forEach((track) => track.stop());
+          setLocalStream(null);
         }
         toast.error(error.data?.message || "Failed to start call");
         throw error;
@@ -355,7 +365,7 @@ export const useCall = () => {
       sourceLanguage,
       targetLanguage,
       dispatch,
-      localStream,
+      setLocalStream,
     ],
   );
 
@@ -365,16 +375,21 @@ export const useCall = () => {
 
     try {
       const constraints: MediaStreamConstraints = {
-        audio: true,
-        video:
-          incomingCall.type === "video"
-            ? {
-                width: { ideal: 1280 },
-                height: { ideal: 720 },
-                frameRate: { ideal: 30 },
-              }
-            : false,
-      };
+  audio: {
+    echoCancellation: true,
+    noiseSuppression: true,
+    autoGainControl: true,
+    sampleRate: 48000,
+  },
+  video:
+    incomingCall.type === "video"
+      ? {
+          width: { ideal: 1280 },
+          height: { ideal: 720 },
+          frameRate: { ideal: 30 },
+        }
+      : false,
+};
 
       await getLocalMedia(constraints);
 
@@ -438,7 +453,6 @@ export const useCall = () => {
       console.log("🔴 Ending call:", activeCall.callId);
 
       socket?.emit("call:end", { callId: activeCall.callId });
-
     } catch (error) {
       console.error("❌ End call error:", error);
     }
@@ -446,6 +460,9 @@ export const useCall = () => {
 
   // Add this to useCall hook for debugging
   const checkCallStatus = useCallback(() => {
+    const localStream = localStreamRef.current;
+    const remoteStream = remoteStreamRef.current;
+
     console.log("📞 Current Call Status:", {
       activeCall: !!activeCall,
       activeCallId: activeCall?._id,
@@ -470,7 +487,7 @@ export const useCall = () => {
         ? Array.from(webrtcServiceRef.current["peerConnections"]?.keys() || [])
         : [],
     });
-  }, [activeCall, localStream, remoteStream, isMuted, isVideoOff]);
+  }, [activeCall, isMuted, isVideoOff]);
 
   // Add this function to force terminate call on both ends
   const forceTerminateCall = useCallback(async () => {
@@ -492,8 +509,15 @@ export const useCall = () => {
     }
   }, [activeCall, endCall, socket, currentUser]);
 
-  // Toggle mute
+  // ✅ FIXED: Toggle mute using localStreamRef
   const toggleMuteCall = useCallback(() => {
+    const stream = localStreamRef.current;
+    if (stream) {
+      stream.getAudioTracks().forEach((track) => {
+        track.enabled = isMuted; // isMuted is current (true=muted), so enabling = flipping
+      });
+      console.log("🎤 Audio tracks enabled:", !isMuted);
+    }
     dispatch(toggleMute());
     toast.success(isMuted ? "Microphone on" : "Microphone off");
   }, [dispatch, isMuted]);
@@ -607,12 +631,26 @@ export const useCall = () => {
     [activeCall, updateCallMetadataApi, dispatch],
   );
 
+  // Helper function to get local stream from context
+  const getLocalStream = useCallback(() => {
+    return localStreamRef.current;
+  }, []);
+
+  // Helper function to get remote stream from context
+  const getRemoteStream = useCallback(() => {
+    return remoteStreamRef.current;
+  }, []);
+
   return {
-    // State
+    // State - using ref getters
+    get localStream() {
+      return localStreamRef.current;
+    },
+    get remoteStream() {
+      return remoteStreamRef.current;
+    },
     activeCall,
     incomingCall,
-    localStream,
-    remoteStream,
     isMuted,
     isVideoOff,
     isScreenSharing,
@@ -637,6 +675,10 @@ export const useCall = () => {
     // Debug/Utility functions
     checkCallStatus,
     forceTerminateCall,
+
+    // Stream helpers
+    getLocalStream,
+    getRemoteStream,
 
     // Helpers
     getOtherParticipants: () => {

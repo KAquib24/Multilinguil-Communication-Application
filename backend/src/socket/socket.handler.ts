@@ -210,10 +210,20 @@ export const initializeSocket = (io: Server) => {
       });
     });
 
-    socket.on("call:join-room", ({ callId }) => {
-      socket.join(`call:${callId}`);
-      console.log(`✅ ${userId} joined call room call:${callId}`);
-    });
+    socket.on("call:join-room", (data) => {
+  const callId = data.callId;
+
+  if (!callId) {
+    console.error("❌ join-room missing callId", data);
+    return;
+  }
+
+  const room = `call:${callId}`;
+
+  socket.join(room);
+
+  console.log(`✅ ${socket.userId} joined call room ${room}`);
+});
 
     socket.on("call:end", async ({ callId }) => {
       const room = `call:${callId}`;

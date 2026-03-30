@@ -1,20 +1,19 @@
 // src/utils/AudioMonitor.tsx
 import React, { useEffect, useRef } from 'react';
-import { useSelector } from 'react-redux';
-import { RootState } from '../app/store'; // ✅ CORRECT IMPORT PATH
+import { useStreams } from '../context/StreamContext';
 
 interface AudioMonitorProps {
   showVisualizer?: boolean;
 }
 
 const AudioMonitor: React.FC<AudioMonitorProps> = ({ showVisualizer = true }) => {
-  const localStream = useSelector((state: RootState) => state.call.localStream);
-  const remoteStream = useSelector((state: RootState) => state.call.remoteStream);
+  const { localStreamRef, remoteStreamRef, localStreamVersion, remoteStreamVersion } = useStreams();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
 
   // Monitor local audio
   useEffect(() => {
+    const localStream = localStreamRef.current;
     if (!localStream || !showVisualizer) return;
 
     const audioContext = new AudioContext();
@@ -29,18 +28,8 @@ const AudioMonitor: React.FC<AudioMonitorProps> = ({ showVisualizer = true }) =>
     
     const draw = () => {
       animationRef.current = requestAnimationFrame(draw);
-      
       analyser.getByteFrequencyData(dataArray);
       
-      // Check if audio is being transmitted
-      const average = dataArray.reduce((a, b) => a + b) / bufferLength;
-      const isAudioActive = average > 10; // Threshold
-      
-      // if (isAudioActive) {
-      //   console.log('🎤 Local audio active - level:', average.toFixed(2));
-      // }
-      
-      // Visualize if canvas exists
       if (canvasRef.current) {
         const canvas = canvasRef.current;
         const ctx = canvas.getContext('2d');
@@ -49,15 +38,12 @@ const AudioMonitor: React.FC<AudioMonitorProps> = ({ showVisualizer = true }) =>
         ctx.clearRect(0, 0, canvas.width, canvas.height);
         
         const barWidth = (canvas.width / bufferLength) * 2.5;
-        let barHeight;
         let x = 0;
         
         for (let i = 0; i < bufferLength; i++) {
-          barHeight = dataArray[i];
-          
+          const barHeight = dataArray[i];
           ctx.fillStyle = `rgb(${barHeight + 100}, 50, 50)`;
           ctx.fillRect(x, canvas.height - barHeight / 2, barWidth, barHeight / 2);
-          
           x += barWidth + 1;
         }
       }
@@ -66,64 +52,57 @@ const AudioMonitor: React.FC<AudioMonitorProps> = ({ showVisualizer = true }) =>
     draw();
     
     return () => {
-      if (animationRef.current) {
-        cancelAnimationFrame(animationRef.current);
-      }
+      if (animationRef.current) cancelAnimationFrame(animationRef.current);
       audioContext.close();
     };
-  }, [localStream, showVisualizer]);
+  }, [localStreamVersion, showVisualizer]); // ✅ re-runs when local stream changes
 
   // Monitor remote audio
   useEffect(() => {
+    const remoteStream = remoteStreamRef.current;
     if (!remoteStream) return;
     
-    // Check if remote stream has audio tracks
     const audioTracks = remoteStream.getAudioTracks();
     console.log('🔊 Remote audio tracks:', audioTracks.length);
     
-    if (audioTracks.length > 0) {
-      const track = audioTracks[0];
-      console.log('🎧 Remote audio track state:', {
-        enabled: track.enabled,
-        muted: track.muted,
-        readyState: track.readyState,
-        kind: track.kind
-      });
-      
-      // Listen for remote audio activity
-      const audioElement = new Audio();
-      audioElement.srcObject = remoteStream;
-      
-      // Set up audio level monitoring for remote
-      const audioContext = new AudioContext();
-      const analyser = audioContext.createAnalyser();
-      const source = audioContext.createMediaStreamSource(remoteStream);
-      
-      source.connect(analyser);
-      analyser.fftSize = 256;
-      
-      const bufferLength = analyser.frequencyBinCount;
-      const dataArray = new Uint8Array(bufferLength);
-      
-      const checkRemoteAudio = () => {
-        analyser.getByteFrequencyData(dataArray);
-        const average = dataArray.reduce((a, b) => a + b) / bufferLength;
-        
-        if (average > 5) {
-          console.log('🎧 Remote audio received - level:', average.toFixed(2));
-        }
-      };
-      
-      const interval = setInterval(checkRemoteAudio, 2000);
-      
-      return () => {
-        clearInterval(interval);
-        audioContext.close();
-      };
-    }
-  }, [remoteStream]);
+    if (audioTracks.length === 0) return;
 
-  
+    const track = audioTracks[0];
+    console.log('🎧 Remote audio track state:', {
+      enabled: track.enabled,
+      muted: track.muted,
+      readyState: track.readyState,
+      kind: track.kind,
+    });
+
+    const audioContext = new AudioContext();
+    const analyser = audioContext.createAnalyser();
+    const source = audioContext.createMediaStreamSource(remoteStream);
+    
+    source.connect(analyser);
+    analyser.fftSize = 256;
+    
+    const bufferLength = analyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    
+    const checkRemoteAudio = () => {
+      analyser.getByteFrequencyData(dataArray);
+      const average = dataArray.reduce((a, b) => a + b) / bufferLength;
+      if (average > 5) {
+        console.log('🎧 Remote audio received - level:', average.toFixed(2));
+      }
+    };
+    
+    const interval = setInterval(checkRemoteAudio, 2000);
+    
+    return () => {
+      clearInterval(interval);
+      audioContext.close();
+    };
+  }, [remoteStreamVersion]); // ✅ re-runs when remote stream changes
+
+  const localStream = localStreamRef.current;
+  const remoteStream = remoteStreamRef.current;
 
   return showVisualizer ? (
     <div className="fixed bottom-20 left-4 bg-gray-800 bg-opacity-80 p-2 rounded-lg z-50">
@@ -135,7 +114,7 @@ const AudioMonitor: React.FC<AudioMonitorProps> = ({ showVisualizer = true }) =>
         className="border border-gray-600 rounded"
       />
       <div className="text-xs text-gray-300 mt-1">
-        Local: {localStream ? 'Connected' : 'No audio'}
+        Local: {localStream ? 'Active' : 'No audio'}
         <br />
         Remote: {remoteStream ? 'Connected' : 'No audio'}
       </div>

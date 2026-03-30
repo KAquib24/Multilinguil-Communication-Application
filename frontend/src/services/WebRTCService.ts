@@ -1,7 +1,7 @@
-import { store } from '../app/store';
-import {
-  setRemoteStream
-} from '../features/calls/callSlice';
+// import { store } from '../app/store';
+// import {
+//   setRemoteStream
+// } from '../features/calls/callSlice';
 import { Socket } from "socket.io-client";
 
 export class WebRTCService {
@@ -41,15 +41,31 @@ export class WebRTCService {
 
   // ✅ Handle track event (remote stream)
   private handleTrackEvent(event: RTCTrackEvent, peerId: string) {
-    if (event.streams && event.streams[0]) {
-      const stream = event.streams[0];
-      console.log("📹 Track received from peer:", peerId);
-      
+  if (event.streams && event.streams[0]) {
+    const stream = event.streams[0];
+    console.log("📹 Track received from peer:", peerId);
+
+    // ✅ Fixed: event.track (singular), not event.tracks
+    const track = event.track;
+    console.log(`🎵 Track ${track.kind} initial muted state:`, track.muted);
+
+    track.onunmute = () => {
+      console.log(`🔊 Track ${track.kind} UNMUTED - firing remote stream callback`);
       if (this.onRemoteStreamCallback) {
         this.onRemoteStreamCallback(peerId, stream);
       }
+    };
+
+    track.onmute = () => {
+      console.log(`🔇 Track ${track.kind} muted`);
+    };
+
+    // Fire immediately so UI shows connected state
+    if (this.onRemoteStreamCallback) {
+      this.onRemoteStreamCallback(peerId, stream);
     }
   }
+}
   
   // Create a new peer connection
   createPeerConnection(peerId: string): RTCPeerConnection {
@@ -142,25 +158,37 @@ export class WebRTCService {
   
   // Handle incoming offer
   async handleOffer(peerId: string, offer: RTCSessionDescriptionInit): Promise<void> {
-    let peerConnection = this.peerConnections.get(peerId);
-    
-    if (!peerConnection) {
-      peerConnection = this.createPeerConnection(peerId);
-    }
-    
-    try {
-      await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
-      
-      const answer = await peerConnection.createAnswer();
-      await peerConnection.setLocalDescription(answer);
-      
-      // Send answer to signaling server
-      this.sendAnswer(peerId, answer);
-      console.log("📥 Offer received from:", peerId);
-    } catch (error) {
-      console.error('Handle offer error:', error);
+  let peerConnection = this.peerConnections.get(peerId);
+
+  if (!peerConnection) {
+    peerConnection = this.createPeerConnection(peerId);
+
+    // ✅ Add local tracks BEFORE setRemoteDescription
+    const localStream = (window as any).localStream as MediaStream | null;
+    if (localStream) {
+      localStream.getTracks().forEach(track => {
+        peerConnection!.addTrack(track, localStream!);
+        console.log("✅ Track added to peer connection before answer:", track.kind);
+      });
+    } else {
+      console.error("❌ No local stream available when handling offer!");
     }
   }
+
+  try {
+    await peerConnection.setRemoteDescription(new RTCSessionDescription(offer));
+    const answer = await peerConnection.createAnswer();
+    await peerConnection.setLocalDescription(answer);
+    this.sendAnswer(peerId, answer);
+    console.log("📥 Offer handled + answer sent to:", peerId);
+  } catch (error) {
+    console.error('Handle offer error:', error);
+  }
+}
+
+getPeerConnection(peerId: string): RTCPeerConnection | undefined {
+  return this.peerConnections.get(peerId);
+}
   
   // Handle incoming answer
   async handleAnswer(peerId: string, answer: RTCSessionDescriptionInit): Promise<void> {
@@ -282,18 +310,19 @@ export class WebRTCService {
   
   // ✅ CRITICAL FIX: Clean up peer connection - AB ERROR-FREE
   cleanupPeerConnection(peerId: string): void {
-    const peerConnection = this.peerConnections.get(peerId);
-    if (peerConnection) {
-      peerConnection.close();
-    }
-
-    this.peerConnections.delete(peerId);
-    store.dispatch(setRemoteStream(null));
-
-    if (this.onStreamEndedCallback) {
-      this.onStreamEndedCallback(peerId);
-    }
+  const peerConnection = this.peerConnections.get(peerId);
+  if (peerConnection) {
+    peerConnection.close();
   }
+  this.peerConnections.delete(peerId);
+
+  // ✅ Notify via window event instead of Redux
+  window.dispatchEvent(new CustomEvent('remoteStreamChanged', { detail: null }));
+
+  if (this.onStreamEndedCallback) {
+    this.onStreamEndedCallback(peerId);
+  }
+}
   
   // Clean up all connections
   cleanupAll(): void {

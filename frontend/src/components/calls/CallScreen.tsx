@@ -2,6 +2,8 @@ import React, { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { RootState } from "../../app/store";
 import { useCall } from "../../hooks/useCall";
+import { useStreams } from "../../context/StreamContext";
+import { useSocket } from "../../context/SocketContext";
 import type { Call, CallParticipant } from "../../features/calls/callApi";
 import { selectCurrentUser } from "../../features/auth/authSlice";
 import {
@@ -20,7 +22,7 @@ import { formatDuration } from "../../utils/date";
 import { format } from "date-fns";
 import RealTimeTranslation from "../translation/RealTimeTranslation";
 // ✅ FIXED: Import from translationSlice, not callSlice
-import { toggleTranslation } from "../../features/translation/translationSlice";
+import { toggleTranslation, setTargetLanguage } from "../../features/translation/translationSlice";
 import { selectTranslationEnabled } from "../../features/translation/translationSelectors";
 import AudioMonitor from "../../utils/AudioMonitor";
 import LiveTranslationOverlay from "../translation/LiveTranslationOverlay";
@@ -44,6 +46,24 @@ const CallScreen: React.FC = () => {
   const [showTranslationOverlay, setShowTranslationOverlay] = useState(false);
   const [currentTranslationSession, setCurrentTranslationSession] =
     useState<TranslationSession | null>(null);
+  // Add language modal states
+  const [showLanguageModal, setShowLanguageModal] = useState(false);
+  const [selectedTargetLang, setSelectedTargetLang] = useState('es');
+
+  const LANGUAGES = [
+    { code: 'en', name: 'English', flag: '🇺🇸' },
+    { code: 'es', name: 'Spanish', flag: '🇪🇸' },
+    { code: 'fr', name: 'French', flag: '🇫🇷' },
+    { code: 'de', name: 'German', flag: '🇩🇪' },
+    { code: 'hi', name: 'Hindi', flag: '🇮🇳' },
+    { code: 'ar', name: 'Arabic', flag: '🇸🇦' },
+    { code: 'zh', name: 'Chinese', flag: '🇨🇳' },
+    { code: 'ja', name: 'Japanese', flag: '🇯🇵' },
+    { code: 'ko', name: 'Korean', flag: '🇰🇷' },
+    { code: 'ru', name: 'Russian', flag: '🇷🇺' },
+    { code: 'pt', name: 'Portuguese', flag: '🇧🇷' },
+    { code: 'it', name: 'Italian', flag: '🇮🇹' },
+  ];
 
   const localVideoRef = useRef<HTMLVideoElement>(null);
   const remoteAudioRef = useRef<HTMLAudioElement>(null);
@@ -51,16 +71,17 @@ const CallScreen: React.FC = () => {
 
   const currentUser = useSelector(selectCurrentUser);
   const { endCall, toggleMute, toggleVideo, toggleScreenShare } = useCall();
+  const {
+    localStreamRef,
+    remoteStreamRef,
+    localStreamVersion,
+    remoteStreamVersion,
+  } = useStreams();
+  const { socket } = useSocket();
 
-  // Get remote stream from Redux
+  // Get remote stream from Redux - only non-stream state
   const activeCall: Call | null = useSelector(
     (state: RootState) => state.call?.activeCall || null,
-  );
-  const localStream = useSelector(
-    (state: RootState) => state.call?.localStream || null,
-  );
-  const remoteStream = useSelector(
-    (state: RootState) => state.call?.remoteStream || null,
   );
   const isMuted = useSelector(
     (state: RootState) => state.call?.isMuted || false,
@@ -77,38 +98,94 @@ const CallScreen: React.FC = () => {
   // ✅ FIXED: Get translationEnabled from translationSlice
   const translationEnabled = useSelector(selectTranslationEnabled);
 
+  // ✅ Listen for translation results
   useEffect(() => {
-    if (remoteStream && remoteAudioRef.current) {
-      remoteAudioRef.current.srcObject = remoteStream;
-      remoteAudioRef.current.muted = false;
-      remoteAudioRef.current.volume = 1;
+    if (!socket) return;
 
-      remoteAudioRef.current.play().catch((err) => {
-        console.error("Audio play failed:", err);
-      });
-    }
-  }, [remoteStream]);
+    socket.on('translation:result', (data: any) => {
+      console.log('📝 Translation received in CallScreen:', data);
+      
+      setCurrentTranslationSession(prev => ({
+        segments: [
+          ...(prev?.segments || []).slice(-10), // keep last 10
+          {
+            timestamp: new Date().toISOString(),
+            text: data.original,
+            translatedText: data.translated,
+            confidence: data.confidence || 0.95,
+          }
+        ]
+      }));
+    });
 
+    return () => {
+      socket.off('translation:result');
+    };
+  }, [socket]);
+
+  // ✅ NEW: Remote stream effect using version
   useEffect(() => {
-    if (!activeCall) return;
+    const stream = remoteStreamRef.current;
+    if (!stream) return;
 
-    console.log("🧠 activeCall:", activeCall);
-    console.log("👤 currentUser:", currentUser);
-    console.log("👥 participants:", activeCall.participants);
+    console.log("🔊 Attaching remote stream, version:", remoteStreamVersion);
 
-    const others = activeCall.participants.filter(
-      (p: CallParticipant) => p.userId._id !== currentUser?._id,
-    );
+    const audio = remoteAudioRef.current;
+    if (!audio) return;
 
-    console.log("➡️ otherParticipants:", others);
-  }, [activeCall, currentUser]);
+    audio.srcObject = stream;
+    audio.muted = false;
+    audio.volume = 1.0;
 
-  // Attach remote stream to video element
+    stream.getAudioTracks().forEach(track => {
+      track.enabled = true;
+      console.log("🔊 Track:", track.id, "enabled:", track.enabled, "muted:", track.muted);
+
+      // ✅ Key fix: listen for unmute on the track
+      track.onunmute = () => {
+        console.log("🔊 Track unmuted! Starting playback");
+        audio.muted = false;
+        audio.play().catch(console.warn);
+      };
+    });
+
+    const tryPlay = async () => {
+      try {
+        const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+        if (AudioCtx) {
+          const ctx = new AudioCtx();
+          if (ctx.state === 'suspended') await ctx.resume();
+          ctx.close();
+        }
+        await audio.play();
+        console.log("✅ Remote audio playing");
+      } catch (err) {
+        console.warn("⚠️ Autoplay blocked, waiting for interaction");
+        const unlock = async () => {
+          audio.muted = false;
+          await audio.play().catch(console.warn);
+          ['click','touchstart','keydown'].forEach(e => 
+            document.removeEventListener(e, unlock)
+          );
+        };
+        ['click','touchstart','keydown'].forEach(e => 
+          document.addEventListener(e, unlock)
+        );
+      }
+    };
+
+    tryPlay();
+
+  }, [remoteStreamVersion]);
+
+  // ✅ NEW: Local stream effect using version
   useEffect(() => {
-    if (remoteStream && remoteVideoRef.current) {
-      remoteVideoRef.current.srcObject = remoteStream;
-    }
-  }, [remoteStream]);
+    const stream = localStreamRef.current;
+    if (!stream || !localVideoRef.current) return;
+
+    console.log("📷 Attaching local stream, version:", localStreamVersion);
+    localVideoRef.current.srcObject = stream;
+  }, [localStreamVersion]);
 
   // Clear video when call ends
   useEffect(() => {
@@ -122,13 +199,6 @@ const CallScreen: React.FC = () => {
     }
   }, [activeCall]);
 
-  // Set up local video stream
-  useEffect(() => {
-    if (localStream && localVideoRef.current) {
-      localVideoRef.current.srcObject = localStream;
-    }
-  }, [localStream]);
-
   // Update call duration
   useEffect(() => {
     if (!activeCall) return;
@@ -141,6 +211,21 @@ const CallScreen: React.FC = () => {
 
     return () => clearInterval(timer);
   }, [activeCall]);
+
+  // Debug logging
+  useEffect(() => {
+    if (!activeCall) return;
+
+    console.log("🧠 activeCall:", activeCall);
+    console.log("👤 currentUser:", currentUser);
+    console.log("👥 participants:", activeCall.participants);
+
+    const others = activeCall.participants.filter(
+      (p: CallParticipant) => p.userId._id !== currentUser?._id,
+    );
+
+    console.log("➡️ otherParticipants:", others);
+  }, [activeCall, currentUser]);
 
   if (!activeCall) return null;
 
@@ -175,20 +260,37 @@ const CallScreen: React.FC = () => {
   };
 
   const handleToggleTranslation = () => {
-    const newState = !translationEnabled;
-    // ✅ FIXED: dispatch from translationSlice
-    dispatch(toggleTranslation());
-
-    if (newState) {
-      setShowTranslationOverlay(true);
+    if (!translationEnabled) {
+      // Show language picker BEFORE enabling translation
+      setShowLanguageModal(true);
     } else {
+      dispatch(toggleTranslation());
       setShowTranslationOverlay(false);
     }
   };
 
+  const handleStartTranslationWithLang = (targetLang: string) => {
+    setSelectedTargetLang(targetLang);
+    setShowLanguageModal(false);
+    dispatch(setTargetLanguage(targetLang)); // from translationSlice
+    dispatch(toggleTranslation());
+    setShowTranslationOverlay(true);
+  };
+
   return (
     <div className="fixed inset-0 z-50 bg-gray-900">
-      <audio ref={remoteAudioRef} autoPlay playsInline />
+      <audio 
+        ref={remoteAudioRef} 
+        autoPlay 
+        playsInline
+        onCanPlay={() => {
+          if (remoteAudioRef.current) {
+            remoteAudioRef.current.muted = false;
+            remoteAudioRef.current.volume = 1.0;
+            remoteAudioRef.current.play().catch(console.warn);
+          }
+        }}
+      />
 
       <div className="h-full flex flex-col">
         {/* Top bar */}
@@ -287,7 +389,7 @@ const CallScreen: React.FC = () => {
                   className="w-full h-full object-cover"
                 />
                 {/* Fallback if no remote video */}
-                {!remoteStream && (
+                {!remoteStreamRef.current && (
                   <div className="absolute inset-0 flex items-center justify-center bg-gray-900">
                     <div className="text-center">
                       <UserGroupIcon className="h-20 w-20 text-gray-600 mx-auto mb-4" />
@@ -297,7 +399,7 @@ const CallScreen: React.FC = () => {
                     </div>
                   </div>
                 )}
-                {remoteStream && (
+                {remoteStreamRef.current && (
                   <div className="absolute bottom-2 left-2 text-white bg-black bg-opacity-50 px-2 py-1 rounded text-sm">
                     {displayUser?.name || "Remote"}
                   </div>
@@ -401,10 +503,6 @@ const CallScreen: React.FC = () => {
                 </button>
               </div>
 
-              {/* <TranslationErrorBoundary>
-                <RealTimeTranslation callId={activeCall._id} compact={false} />
-              </TranslationErrorBoundary> */}
-
               {/* Translation log */}
               <div className="mt-6">
                 <h5 className="text-sm font-medium text-gray-300 mb-2">
@@ -447,7 +545,9 @@ const CallScreen: React.FC = () => {
             >
               <div
                 className={`h-14 w-14 rounded-full flex items-center justify-center mb-2 ${
-                  isMuted ? "bg-red-500 hover:bg-red-600" : "bg-gray-700 hover:bg-gray-600"
+                  isMuted
+                    ? "bg-red-500 hover:bg-red-600"
+                    : "bg-gray-700 hover:bg-gray-600"
                 }`}
               >
                 <MicrophoneIcon className="h-6 w-6" />
@@ -463,7 +563,9 @@ const CallScreen: React.FC = () => {
               >
                 <div
                   className={`h-14 w-14 rounded-full flex items-center justify-center mb-2 ${
-                    isVideoOff ? "bg-red-500 hover:bg-red-600" : "bg-gray-700 hover:bg-gray-600"
+                    isVideoOff
+                      ? "bg-red-500 hover:bg-red-600"
+                      : "bg-gray-700 hover:bg-gray-600"
                   }`}
                 >
                   {isVideoOff ? (
@@ -506,7 +608,9 @@ const CallScreen: React.FC = () => {
             >
               <div
                 className={`h-14 w-14 rounded-full flex items-center justify-center mb-2 ${
-                  isScreenSharing ? "bg-blue-500 hover:bg-blue-600" : "bg-gray-700 hover:bg-gray-600"
+                  isScreenSharing
+                    ? "bg-blue-500 hover:bg-blue-600"
+                    : "bg-gray-700 hover:bg-gray-600"
                 }`}
               >
                 <ComputerDesktopIcon className="h-6 w-6" />
@@ -529,6 +633,40 @@ const CallScreen: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Language Selection Modal */}
+      {showLanguageModal && (
+        <div className="fixed inset-0 z-[60] bg-black bg-opacity-70 flex items-center justify-center">
+          <div className="bg-gray-800 rounded-2xl p-6 w-80 max-h-[80vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-white text-lg font-semibold">Translate to...</h3>
+              <button onClick={() => setShowLanguageModal(false)}>
+                <XMarkIcon className="h-5 w-5 text-gray-400" />
+              </button>
+            </div>
+            <p className="text-gray-400 text-sm mb-4">
+              Your speech will be auto-detected and translated to the language you choose.
+            </p>
+            <div className="space-y-2">
+              {LANGUAGES.map(lang => (
+                <button
+                  key={lang.code}
+                  onClick={() => handleStartTranslationWithLang(lang.code)}
+                  className={`w-full flex items-center space-x-3 px-4 py-3 rounded-xl hover:bg-gray-700 transition-colors ${
+                    selectedTargetLang === lang.code ? 'bg-blue-600' : 'bg-gray-700'
+                  }`}
+                >
+                  <span className="text-2xl">{lang.flag}</span>
+                  <span className="text-white font-medium">{lang.name}</span>
+                  {selectedTargetLang === lang.code && (
+                    <span className="ml-auto text-blue-300 text-xs">Selected</span>
+                  )}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Translation Overlay */}
       {showTranslationOverlay && activeCall && (

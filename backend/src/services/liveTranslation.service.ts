@@ -21,10 +21,7 @@ let ttsClient: TextToSpeechClient;
 // Initialize with better error handling for ES modules
 try {
   // Absolute path to your credentials file
-  const keyPath = path.resolve(
-    process.cwd(),
-    "google-credentials.json"
-  );
+  const keyPath = path.resolve(process.cwd(), "google-credentials.json");
 
   console.log("🔐 Using Google credentials:", keyPath);
 
@@ -53,7 +50,6 @@ try {
   });
 
   console.log("✅ Google Cloud clients initialized successfully");
-
 } catch (error) {
   console.error("❌ Google Cloud initialization failed:", error);
 }
@@ -107,139 +103,216 @@ export class LiveTranslationService {
     }
 
     try {
-      // Map language codes to Google format
-      const googleLanguageCode = this.getSupportedLanguageCode(
+      // Map language codes to Google format for recognition
+      const googleRecognitionLanguage = this.getSupportedLanguageCode(
         sourceLanguage || "en-US",
       );
-      const googleTargetLanguage = targetLanguage;
+
+      // Target language for translation (just the language code, not locale)
+      const googleTargetLanguage = targetLanguage.split("-")[0]; // e.g., "en-US" -> "en"
 
       console.log(
-        `🔤 Starting speech recognition with language: ${googleLanguageCode}`,
+        `🔤 Starting speech recognition with language: ${googleRecognitionLanguage}`,
       );
+      console.log(`🎯 Target translation language: ${googleTargetLanguage}`);
 
-      // Create streaming recognition stream
-      const recognizeStream = speechClient.streamingRecognize({
-        config: {
-          encoding: "WEBM_OPUS" as const,
-          sampleRateHertz: 48000,
-          audioChannelCount: 1,
-          languageCode: googleLanguageCode,
-          enableAutomaticPunctuation: true,
-          enableWordTimeOffsets: false,
-          model: "command_and_search",
-          useEnhanced: true,
-        },
-        interimResults: true,
-      });
-
-      // Handle recognition results
-      recognizeStream.on("data", async (response: any) => {
-        try {
-          const transcription = response.results
-            ?.map((result: any) => result.alternatives[0].transcript)
-            .join("");
-
-          const isFinal = response.results?.[0]?.isFinal;
-
-          if (transcription && transcription.trim()) {
-            // Get detected language
-            const detectedLanguage =
-              response.results?.[0]?.languageCode || sourceLanguage || "en";
-
-            console.log(
-              `🎤 Recognized: "${transcription}" (${detectedLanguage})`,
-            );
-
-            // ========== FIXED TRANSLATION SECTION ==========
-            try {
-              if (translateClient) {
-                console.log(
-                  `🌍 Translating: "${transcription}" to ${googleTargetLanguage}`,
-                );
-
-                // Simple translation
-                const [translation] = await translateClient.translate(
-                  transcription,
-                  googleTargetLanguage,
-                );
-
-                console.log(`✅ Translated: "${translation}"`);
-
-                // Emit result
-                this.emitTranslationResult(callId, userId, {
-                  original: transcription,
-                  translated: translation,
-                  sourceLanguage: detectedLanguage,
-                  targetLanguage: googleTargetLanguage,
-                  isFinal: isFinal || false,
-                  timestamp: new Date(),
-                });
-
-                // If final, also generate speech
-                if (isFinal && ttsClient) {
-                  this.generateSpeech(
-                    translation,
-                    googleTargetLanguage,
-                    callId,
-                    userId,
-                  );
-                }
-              } else {
-                console.warn("Translate client not available");
-
-                // Emit with fallback
-                this.emitTranslationResult(callId, userId, {
-                  original: transcription,
-                  translated: `[${googleTargetLanguage}] ${transcription}`,
-                  sourceLanguage: detectedLanguage,
-                  targetLanguage: googleTargetLanguage,
-                  isFinal: isFinal || false,
-                  timestamp: new Date(),
-                });
-              }
-            } catch (transError: any) {
-              console.error("Translation error:", transError.message);
-
-              // Still emit so user knows it's working
-              this.emitTranslationResult(callId, userId, {
-                original: transcription,
-                translated: transcription, // Send original as fallback
-                sourceLanguage: detectedLanguage,
-                targetLanguage: googleTargetLanguage,
-                isFinal: isFinal || false,
-                timestamp: new Date(),
-              });
-            }
-            // ========== END OF FIXED SECTION ==========
-          }
-        } catch (err) {
-          console.error("Error processing recognition data:", err);
-        }
-      });
-
-      recognizeStream.on("error", (error) => {
-        console.error(`❌ Recognition stream error for user ${userId}:`, error);
-        this.stopSession(callId, userId);
-      });
-
-      // Store session
-      callSessions.set(userId, {
+      // ✅ Store session metadata first
+      const sessionData: TranslationSession = {
         callId,
         userId,
         targetLanguage: googleTargetLanguage,
-        sourceLanguage: googleLanguageCode,
-        recognizeStream,
+        sourceLanguage: googleRecognitionLanguage,
+        recognizeStream: null, // will be set below
         audioBuffer: [],
         isActive: true,
         lastActivity: new Date(),
-      });
+      };
+
+      callSessions.set(userId, sessionData);
+
+      // ✅ Create a function to (re)start the stream
+      const createStream = () => {
+        if (!callSessions.get(userId)?.isActive) {
+          console.log(
+            `⏹️ Session for user ${userId} is no longer active, not restarting stream`,
+          );
+          return; // Session was stopped
+        }
+
+        console.log(`🔄 (Re)starting recognition stream for user ${userId}`);
+
+        const recognizeStream = speechClient.streamingRecognize({
+          config: {
+            encoding: "LINEAR16",
+            sampleRateHertz: 16000,
+            audioChannelCount: 1,
+            languageCode: googleRecognitionLanguage,
+            enableAutomaticPunctuation: true,
+            model: "latest_long",
+          },
+          interimResults: true,
+        });
+
+        // Handle recognition results
+        recognizeStream.on("data", async (response: any) => {
+          try {
+            if (!response.results || response.results.length === 0) {
+              return;
+            }
+
+            const result = response.results[0];
+            const alternative = result.alternatives[0];
+            const transcription = alternative.transcript;
+            const isFinal = result.isFinal;
+            const confidence = alternative.confidence;
+
+            if (transcription && transcription.trim()) {
+              // Get detected language (or use sourceLanguage as fallback)
+              const detectedLanguage =
+                result.languageCode || googleRecognitionLanguage;
+
+              // Extract base language code for display
+              const detectedBaseLanguage = detectedLanguage.split("-")[0];
+
+              console.log(
+                `🎤 Recognized (${isFinal ? "FINAL" : "INTERIM"}): "${transcription}" (${detectedLanguage})`,
+              );
+
+              // ========== TRANSLATION SECTION ==========
+              try {
+                if (translateClient) {
+                  console.log(
+                    `🌍 Translating: "${transcription}" to ${googleTargetLanguage}`,
+                  );
+
+                  // Simple translation
+                  const [translation] = await translateClient.translate(
+                    transcription,
+                    googleTargetLanguage,
+                  );
+
+                  console.log(`✅ Translated: "${translation}"`);
+
+                  // Emit result
+                  this.emitTranslationResult(callId, userId, {
+                    original: transcription,
+                    translated: translation,
+                    sourceLanguage: detectedBaseLanguage,
+                    targetLanguage: googleTargetLanguage,
+                    isFinal: isFinal || false,
+                    confidence: confidence,
+                    timestamp: new Date(),
+                  });
+
+                  // If final, also generate speech
+                  if (isFinal && ttsClient && translation) {
+                    this.generateSpeech(
+                      translation,
+                      googleTargetLanguage,
+                      callId,
+                      userId,
+                    );
+                  }
+                } else {
+                  console.warn("Translate client not available");
+
+                  // Emit with fallback
+                  this.emitTranslationResult(callId, userId, {
+                    original: transcription,
+                    translated: `[${googleTargetLanguage}] ${transcription}`,
+                    sourceLanguage: detectedBaseLanguage,
+                    targetLanguage: googleTargetLanguage,
+                    isFinal: isFinal || false,
+                    confidence: confidence,
+                    timestamp: new Date(),
+                  });
+                }
+              } catch (transError: any) {
+                console.error("Translation error:", transError.message);
+
+                // Still emit so user knows it's working
+                this.emitTranslationResult(callId, userId, {
+                  original: transcription,
+                  translated: transcription, // Send original as fallback
+                  sourceLanguage: detectedBaseLanguage,
+                  targetLanguage: googleTargetLanguage,
+                  isFinal: isFinal || false,
+                  confidence: confidence,
+                  timestamp: new Date(),
+                });
+              }
+            }
+          } catch (err) {
+            console.error("Error processing recognition data:", err);
+          }
+        });
+
+        recognizeStream.on("error", (error: any) => {
+          console.error(
+            `❌ Recognition stream error for user ${userId}:`,
+            error.message,
+          );
+
+          // ✅ Restart stream on error (unless session was intentionally stopped)
+          const session = callSessions.get(userId);
+          if (session?.isActive) {
+            console.log(
+              `🔄 Restarting stream after error for user ${userId} in 1 second`,
+            );
+            session.recognizeStream = null; // Mark as null so chunks get buffered
+            setTimeout(() => createStream(), 1000);
+          }
+        });
+
+        recognizeStream.on("end", () => {
+          console.log(`🔚 Recognition stream ended for user ${userId}`);
+
+          // ✅ Restart stream when it ends naturally (timeout, silence, etc.)
+          const session = callSessions.get(userId);
+          if (session?.isActive) {
+            console.log(
+              `🔄 Restarting stream after end for user ${userId} in 500ms`,
+            );
+            session.recognizeStream = null; // Mark as null so chunks get buffered
+            setTimeout(() => createStream(), 500);
+          }
+        });
+
+        // ✅ Update session with new stream
+        const session = callSessions.get(userId);
+        if (session) {
+          session.recognizeStream = recognizeStream;
+
+          // ✅ Flush any buffered chunks
+          if (session.audioBuffer.length > 0) {
+            console.log(
+              `📤 Flushing ${session.audioBuffer.length} buffered chunks for user ${userId}`,
+            );
+            session.audioBuffer.forEach((chunk) => {
+              try {
+                recognizeStream.write(chunk);
+              } catch (writeError) {
+                console.error(`❌ Failed to write buffered chunk:`, writeError);
+              }
+            });
+            session.audioBuffer = [];
+          }
+        }
+      };
+
+      // Start initial stream
+      createStream();
 
       console.log(
         `✅ Translation session started for user ${userId} in call ${callId}`,
       );
+
+      // Log active sessions count
+      console.log(
+        `📊 Active sessions: ${activeSessions.size} calls, ${callSessions.size} users in this call`,
+      );
     } catch (error) {
       console.error("❌ Failed to start translation session:", error);
-      console.error("TTS ERROR:", error);
       throw error;
     }
   }
@@ -253,21 +326,61 @@ export class LiveTranslationService {
     audioChunk: Buffer,
   ): boolean {
     const callSessions = activeSessions.get(callId);
-    if (!callSessions) return false;
+    if (!callSessions) {
+      console.log(`❌ No call sessions found for call ${callId}`);
+      return false;
+    }
 
     const session = callSessions.get(userId);
-    if (!session || !session.isActive || !session.recognizeStream) return false;
+    if (!session) {
+      console.log(`❌ No session found for user ${userId} in call ${callId}`);
+      return false;
+    }
+
+    if (!session.isActive) {
+      console.log(`❌ Session inactive for user ${userId} in call ${callId}`);
+      return false;
+    }
+
+    // ✅ If stream is null (restarting), buffer the chunk
+    if (!session.recognizeStream) {
+      console.log(
+        `⏳ Stream restarting, buffering chunk for ${userId} (buffer size: ${session.audioBuffer.length + 1})`,
+      );
+      session.audioBuffer.push(audioChunk);
+      session.lastActivity = new Date();
+      return true; // Return true so frontend doesn't think session is dead
+    }
 
     try {
-      // Write chunk to recognition stream
+      // ✅ Flush any buffered chunks first
+      if (session.audioBuffer.length > 0) {
+        console.log(
+          `📤 Flushing ${session.audioBuffer.length} buffered chunks for ${userId}`,
+        );
+        session.audioBuffer.forEach((chunk) => {
+          session.recognizeStream.write(chunk);
+        });
+        session.audioBuffer = [];
+      }
+
       session.recognizeStream.write(audioChunk);
       session.lastActivity = new Date();
+
+      // Log every 20th chunk or so to avoid spam
+      if (Math.random() < 0.05) {
+        console.log(
+          `✅ Processed audio chunk for user ${userId}, size: ${audioChunk.length} bytes`,
+        );
+      }
+
       return true;
     } catch (error) {
       console.error(
         `❌ Failed to process audio chunk for user ${userId}:`,
         error,
       );
+      session.recognizeStream = null; // Mark as null so next chunk knows to buffer
       return false;
     }
   }
@@ -280,13 +393,17 @@ export class LiveTranslationService {
     if (!callSessions) return;
 
     const session = callSessions.get(userId);
-    if (session && session.recognizeStream) {
-      try {
-        session.recognizeStream.end();
-        session.isActive = false;
-      } catch (error) {
-        console.error(`Error ending stream for user ${userId}:`, error);
+    if (session) {
+      session.isActive = false; // Mark inactive first to prevent restarts
+
+      if (session.recognizeStream) {
+        try {
+          session.recognizeStream.end();
+        } catch (error) {
+          console.error(`Error ending stream for user ${userId}:`, error);
+        }
       }
+
       callSessions.delete(userId);
     }
 
@@ -326,10 +443,13 @@ export class LiveTranslationService {
     }
 
     try {
+      // Map language code to TTS voice
+      const voiceLanguage = this.getTTSLanguageCode(language);
+
       const request = {
         input: { text },
         voice: {
-          languageCode: language,
+          languageCode: voiceLanguage,
           ssmlGender: "NEUTRAL" as const,
         },
         audioConfig: {
@@ -339,11 +459,16 @@ export class LiveTranslationService {
         },
       };
 
+      console.log(`🔊 Generating TTS for: "${text}" in ${voiceLanguage}`);
+
       const [response] = await ttsClient.synthesizeSpeech(request);
 
       if (response.audioContent) {
         // Emit audio result
         this.emitAudioResult(callId, userId, response.audioContent as Buffer);
+        console.log(
+          `✅ TTS generated, size: ${(response.audioContent as Buffer).length} bytes`,
+        );
       }
     } catch (error) {
       console.error("❌ TTS generation error:", error);
@@ -362,6 +487,7 @@ export class LiveTranslationService {
       sourceLanguage: string;
       targetLanguage: string;
       isFinal: boolean;
+      confidence: number;
       timestamp: Date;
     },
   ) => void = () => {};
@@ -392,8 +518,15 @@ export class LiveTranslationService {
     });
   }
 
-  // Add this function inside LiveTranslationService class
+  /**
+   * Get supported language code for Google Speech
+   */
   private static getSupportedLanguageCode(language: string): string {
+    // If it's already a full locale (e.g., "en-US"), use it
+    if (language.includes("-")) {
+      return language;
+    }
+
     // Map of languages to their supported variants
     const languageMap: Record<string, string> = {
       hi: "hi-IN", // Hindi (India)
@@ -415,6 +548,54 @@ export class LiveTranslationService {
     };
 
     return languageMap[language] || language + "-" + language.toUpperCase();
+  }
+
+  /**
+   * Get TTS language code
+   */
+  private static getTTSLanguageCode(language: string): string {
+    // For TTS, we want just the language code, not the full locale
+    const baseCode = language.split("-")[0];
+
+    // Map to supported TTS languages
+    const ttsMap: Record<string, string> = {
+      hi: "hi-IN",
+      en: "en-US",
+      es: "es-ES",
+      fr: "fr-FR",
+      de: "de-DE",
+      it: "it-IT",
+      ja: "ja-JP",
+      ko: "ko-KR",
+      pt: "pt-PT",
+      ru: "ru-RU",
+      ar: "ar-XA",
+      zh: "cmn-CN",
+    };
+
+    return ttsMap[baseCode] || "en-US";
+  }
+
+  /**
+   * Debug method to get session info
+   */
+  static getSessionInfo(): any {
+    const info: any = {};
+    activeSessions.forEach((sessions, callId) => {
+      info[callId] = Array.from(sessions.keys()).map((userId) => {
+        const session = sessions.get(userId)!;
+        return {
+          userId,
+          targetLanguage: session.targetLanguage,
+          sourceLanguage: session.sourceLanguage,
+          isActive: session.isActive,
+          hasStream: !!session.recognizeStream,
+          bufferedChunks: session.audioBuffer.length,
+          lastActivity: session.lastActivity,
+        };
+      });
+    });
+    return info;
   }
 }
 

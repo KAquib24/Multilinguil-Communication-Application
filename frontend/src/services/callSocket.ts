@@ -151,31 +151,38 @@ export class CallSocketService {
   private handleCallAnswered(data: { call: Call }) {
     store.dispatch(setActiveCall(data.call));
     store.dispatch(setIsInCall(true));
-    this.socket?.emit('call:join-room', { callId: data.call.callId });
+    this.socket?.emit("call:join-room", { callId: data.call.callId });
 
     const currentUserId = store.getState().auth.user?._id;
+    // ✅ Use window ref, not Redux
+    const localStream = (window as any).localStream as MediaStream | null;
 
     const otherParticipants = data.call.participants.filter(
-      (p) => p.userId._id !== currentUserId,
+      (p: any) => p.userId._id !== currentUserId,
     );
 
-    otherParticipants.forEach((p) => {
+    otherParticipants.forEach((p: any) => {
       const peerId = p.userId._id;
-
       if (!this.webrtcService.hasConnection(peerId)) {
-        const pc = this.webrtcService.createPeerConnection(peerId);
+        this.webrtcService.createPeerConnection(peerId);
 
-        const localStream = store.getState().call.localStream;
         if (localStream) {
-          this.webrtcService.addLocalStream(peerId, localStream);
+          // ✅ Add tracks BEFORE offer (onnegotiationneeded fires automatically)
+          localStream.getTracks().forEach((track: MediaStreamTrack) => {
+            const pc = this.webrtcService.getPeerConnection(peerId);
+            if (pc) {
+              pc.addTrack(track, localStream);
+              console.log("✅ Added track to peer before offer:", track.kind);
+            }
+          });
+        } else {
+          console.error(
+            "❌ No local stream when answering! Audio will not transmit.",
+          );
         }
-
-        this.webrtcService.createAndSendOffer(peerId);
       }
     });
-
     this.stopRingtone();
-    console.log("Call answered - Peer connection created");
   }
 
   private handleCallRejected(data: { call: Call; reason?: string }) {
@@ -201,33 +208,32 @@ export class CallSocketService {
   // ✅ CRITICAL FIX: Handle call ended from server
   // callSocket.ts mein niche wala handleCallEnded replace kar:
   private handleCallEnded(data: { call: any }) {
-  console.log("📡 Call ended received from server");
+    console.log("📡 Call ended received from server");
 
-  const stateBefore = store.getState().call;
-  console.log("🧠 BEFORE RESET:", stateBefore);
+    const stateBefore = store.getState().call;
+    console.log("🧠 BEFORE RESET:", stateBefore);
 
-  const localStream = store.getState().call.localStream;
+    const localStream = store.getState().call.localStream;
 
-  if (localStream) {
-    localStream.getTracks().forEach(track => {
-      if (track.readyState === "live") {
-        track.stop();
-      }
-    });
+    if (localStream) {
+      localStream.getTracks().forEach((track) => {
+        if (track.readyState === "live") {
+          track.stop();
+        }
+      });
+    }
+
+    if (this.webrtcService) {
+      this.webrtcService.cleanupAll();
+    }
+
+    store.dispatch(resetCallState());
+
+    const stateAfter = store.getState().call;
+    console.log("🧠 AFTER RESET:", stateAfter);
+
+    this.stopRingtone();
   }
-
-  if (this.webrtcService) {
-    this.webrtcService.cleanupAll();
-  }
-
-  store.dispatch(resetCallState());
-
-  const stateAfter = store.getState().call;
-  console.log("🧠 AFTER RESET:", stateAfter);
-
-  this.stopRingtone();
-}
-
 
   private handleParticipantJoined(data: { callId: string; participant: any }) {
     const state: RootState = store.getState();
