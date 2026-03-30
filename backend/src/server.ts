@@ -1,3 +1,17 @@
+import fs from "fs";
+import path from 'path';
+if (process.env.GOOGLE_CREDENTIALS_JSON) {
+  const filePath = path.join(process.cwd(), "google-credentials.json");
+
+  fs.writeFileSync(
+    filePath,
+    process.env.GOOGLE_CREDENTIALS_JSON
+  );
+
+  process.env.GOOGLE_APPLICATION_CREDENTIALS = filePath;
+
+  console.log("✅ Google credentials file created");
+}
 // server.ts
 import express, { Application, Request, Response, NextFunction } from 'express';
 import mongoose from 'mongoose';
@@ -12,29 +26,12 @@ import { Server } from 'socket.io';
 import http from 'http';
 import createHttpError from 'http-errors';
 import dotenv from 'dotenv';
-import path from 'path';
 import { fileURLToPath } from 'url';
-import fs from "fs";
 
 // Load environment variables
 dotenv.config();
 
-dotenv.config();
 
-// 🔥 ADD THIS BLOCK HERE (RIGHT BELOW dotenv.config)
-
-if (process.env.GOOGLE_CREDENTIALS_JSON) {
-  const filePath = path.join(process.cwd(), "google-credentials.json");
-
-  fs.writeFileSync(
-    filePath,
-    process.env.GOOGLE_CREDENTIALS_JSON
-  );
-
-  process.env.GOOGLE_APPLICATION_CREDENTIALS = filePath;
-
-  console.log("✅ Google credentials file created");
-}
 
 // ES Modules fix for __dirname
 const __filename = fileURLToPath(import.meta.url);
