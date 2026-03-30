@@ -1,9 +1,9 @@
 import { SpeechClient } from "@google-cloud/speech";
 import { v2 } from "@google-cloud/translate";
 import { TextToSpeechClient } from "@google-cloud/text-to-speech";
+import fs from "fs";
 import { PassThrough } from "stream";
 import createHttpError from "http-errors";
-import fs from "fs";
 import path from "path";
 import { fileURLToPath } from "url";
 
