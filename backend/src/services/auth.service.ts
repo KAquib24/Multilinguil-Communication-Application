@@ -1,5 +1,5 @@
 import jwt from 'jsonwebtoken';
-import User, { IUser } from '../models/User';
+import User, { IUser } from '../models/User.js';
 import createError from 'http-errors';
 
 interface TokenPayload {
