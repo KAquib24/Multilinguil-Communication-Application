@@ -1,4 +1,5 @@
-import { createSlice, PayloadAction } from "@reduxjs/toolkit";
+// features/chat/chatSlice.ts
+import { createSlice, PayloadAction, createSelector } from "@reduxjs/toolkit";
 import { Chat, Message } from "./chatApi";
 
 interface ChatState {
@@ -45,14 +46,11 @@ const chatSlice = createSlice({
     },
 
     addChat: (state, action: PayloadAction<Chat>) => {
-      // Remove if exists (to update)
       state.chats = state.chats.filter(
         (chat) => chat._id !== action.payload._id,
       );
-      // Add to beginning
       state.chats.unshift(action.payload);
     },
-
 
     updateChat: (
       state,
@@ -67,7 +65,6 @@ const chatSlice = createSlice({
           ...action.payload.updates,
         };
 
-        // Update active chat if it's the same
         if (state.activeChat?._id === action.payload.chatId) {
           state.activeChat = { ...state.activeChat, ...action.payload.updates };
         }
@@ -88,20 +85,29 @@ const chatSlice = createSlice({
 
     // Message actions
     setMessages: (state, action: PayloadAction<Message[]>) => {
+      console.log('📝 setMessages called with:', action.payload.length, 'messages');
       state.messages = action.payload;
     },
 
     addMessage: (state, action: PayloadAction<Message>) => {
+      console.log('📝 addMessage called with:', action.payload._id, action.payload.content);
+      
       // Check if message already exists
       const exists = state.messages.some(
         (msg) => msg._id === action.payload._id,
       );
+      
       if (!exists) {
-        state.messages.push(action.payload);
+        // Create new array reference to force re-render
+        state.messages = [...state.messages, action.payload];
+        // Sort by date
         state.messages.sort(
           (a, b) =>
             new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
         );
+        console.log('✅ Message added, new count:', state.messages.length);
+      } else {
+        console.log('⚠️ Message already exists, skipping');
       }
     },
 
@@ -238,20 +244,30 @@ export const {
 
 export default chatSlice.reducer;
 
-// Selectors
+// ========== SELECTORS ==========
 export const selectChats = (state: { chat: ChatState }) => state.chat.chats;
-export const selectActiveChat = (state: { chat: ChatState }) =>
-  state.chat.activeChat;
-export const selectMessages = (state: { chat: ChatState }) =>
-  state.chat.messages;
-export const selectTypingUsers = (state: { chat: ChatState }) =>
-  state.chat.typingUsers;
-export const selectedMessages = (state: { chat: ChatState }) =>
-  state.chat.selectedMessages;
-export const selectSearchQuery = (state: { chat: ChatState }) =>
-  state.chat.searchQuery;
-export const selectIsLoading = (state: { chat: ChatState }) =>
-  state.chat.isLoading;
+export const selectActiveChat = (state: { chat: ChatState }) => state.chat.activeChat;
+export const selectMessages = (state: { chat: ChatState }) => state.chat.messages;
+export const selectTypingUsers = (state: { chat: ChatState }) => state.chat.typingUsers;
+export const selectSelectedMessages = (state: { chat: ChatState }) => state.chat.selectedMessages;
+export const selectSearchQuery = (state: { chat: ChatState }) => state.chat.searchQuery;
+export const selectIsLoading = (state: { chat: ChatState }) => state.chat.isLoading;
 export const selectChatError = (state: { chat: ChatState }) => state.chat.error;
-export const selectPagination = (state: { chat: ChatState }) =>
-  state.chat.pagination;
+export const selectPagination = (state: { chat: ChatState }) => state.chat.pagination;
+
+// Memoized selectors
+export const selectMessagesForActiveChat = createSelector(
+  [selectMessages, selectActiveChat],
+  (messages, activeChat) => {
+    if (!activeChat) return [];
+    return messages;
+  }
+);
+
+export const selectUnreadCountForChat = createSelector(
+  [selectChats, (_state: { chat: ChatState }, chatId: string) => chatId],
+  (chats, chatId) => {
+    const chat = chats.find(c => c._id === chatId);
+    return chat?.unreadCount || 0;
+  }
+);

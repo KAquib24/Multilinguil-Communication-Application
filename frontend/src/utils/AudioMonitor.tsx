@@ -11,6 +11,8 @@ const AudioMonitor: React.FC<AudioMonitorProps> = ({ showVisualizer = true }) =>
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number>();
 
+
+  
   // Monitor local audio
   useEffect(() => {
     const localStream = localStreamRef.current;

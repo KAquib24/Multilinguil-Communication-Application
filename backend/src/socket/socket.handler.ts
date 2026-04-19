@@ -87,33 +87,43 @@ export const initializeSocket = (io: Server) => {
     // ====================
 
     socket.on("message:send", async (data) => {
-      try {
-        const { chatId, content, type, replyTo, attachments } = data;
+  try {
+    const { chatId, message } = data;
+    
+    console.log(`📨 Message send requested for chat ${chatId}:`, message);
 
-        // Emit to all participants in the chat
-        io.to(`chat:${chatId}`).emit("message:new", {
-          chatId,
-          message: {
-            _id: Date.now().toString(), // Temporary ID
-            sender: socket.user,
-            content,
-            type,
-            replyTo,
-            attachments,
-            createdAt: new Date(),
-            updatedAt: new Date(),
-          },
-        });
+    // Create the message object with proper structure
+    const messageData = {
+      _id: Date.now().toString(),
+      sender: {
+        _id: socket.userId,
+        name: socket.user?.name || 'Unknown',
+        picture: socket.user?.picture || '',
+        email: socket.user?.email || ''
+      },
+      content: message.content,
+      type: message.type || 'text',
+      readBy: [socket.userId],
+      deleted: false,
+      forwarded: false,
+      reactions: [],
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      conversation: chatId  // IMPORTANT: This field is needed for frontend
+    };
 
-        // Notify typing stop
-        socket.to(`chat:${chatId}`).emit("typing:stop", {
-          chatId,
-          userId,
-        });
-      } catch (error) {
-        socket.emit("error", { message: "Failed to send message" });
-      }
-    });
+    // Emit to sender (so their message appears immediately)
+    socket.emit("message:sent", { message: messageData });
+    
+    // Emit to all other participants in the chat
+    socket.to(`chat:${chatId}`).emit("message:received", { message: messageData });
+    
+    console.log(`✅ Message emitted to chat ${chatId}`);
+  } catch (error) {
+    console.error('❌ Error in message:send:', error);
+    socket.emit("error", { message: "Failed to send message" });
+  }
+});
 
     socket.on("message:typing", (data) => {
       const { chatId } = data;

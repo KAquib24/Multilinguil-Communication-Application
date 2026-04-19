@@ -10,6 +10,7 @@ import {
 import { useLogoutMutation } from "../../features/auth/authApi";
 import IncomingCallModal from "../calls/IncomingCallModel";
 import { useChat } from "../../hooks/useChat";
+import ChatMessages from "../chat/ChatMessages";
 import {
   Bars3Icon,
   ChatBubbleLeftRightIcon,
@@ -574,7 +575,9 @@ const MainLayout: React.FC<MainLayoutProps> = ({ children }) => {
 
               {/* Chat Messages Area */}
               <div className="flex-1 overflow-y-auto p-4 bg-whatsapp-bg-light dark:bg-whatsapp-bg-dark">
-                <div className="max-w-3xl mx-auto space-y-4">{children}</div>
+                <div className="max-w-3xl mx-auto">
+                  <ChatMessages chatId={activeChat._id} />
+                </div>
               </div>
 
               {/* Message Input */}

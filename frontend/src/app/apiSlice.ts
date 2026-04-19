@@ -4,7 +4,7 @@ import type { RootState } from './store';
 import { setAccessToken, logout } from '../features/auth/authSlice';
 
 const baseQuery = fetchBaseQuery({
-  baseUrl: process.env.REACT_APP_API_URL || 'http://localhost:5000/api/v1',
+  baseUrl: process.env.REACT_APP_API_URL || 'http://localhost:5001/api/v1',
   credentials: 'include',
   prepareHeaders: (headers, { getState }) => {
     const token = (getState() as RootState).auth.accessToken;

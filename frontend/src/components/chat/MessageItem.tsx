@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// components/chat/MessageItem.tsx (FIXED - Handle temp messages)
+import React, { useState, useEffect } from 'react';
 import { useSelector } from 'react-redux';
 import { Message } from '../../features/chat/chatApi';
 import { selectCurrentUser } from '../../features/auth/authSlice';
@@ -7,8 +8,6 @@ import {
   CheckIcon,
   CheckCircleIcon,
   PaperClipIcon,
-  // PhotoIcon,
-  // VideoCameraIcon,
   MicrophoneIcon,
   MapPinIcon,
   TrashIcon,
@@ -34,9 +33,10 @@ const MessageItem: React.FC<MessageItemProps> = ({
   const [showReactions, setShowReactions] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
 
-  const isSentByMe = message.sender._id === currentUser?._id;
+  const isSentByMe = message.sender?._id === currentUser?._id;
   const isDeleted = message.deleted;
   const hasReactions = message.reactions && message.reactions.length > 0;
+  const isTempMessage = message._id?.startsWith('temp-');
 
   const commonReactions = ["👍", "❤️", "😂", "😮", "😢", "🙏"];
 
@@ -180,7 +180,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
           </div>
         );
 
-      default: // text
+      default:
         return (
           <div className="text-sm whitespace-pre-wrap break-words">
             {message.content}
@@ -191,8 +191,15 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   const renderMessageStatus = () => {
     if (!isSentByMe) return null;
+    if (isTempMessage) {
+      return (
+        <div className="flex items-center space-x-1 ml-2">
+          <ClockIcon className="h-4 w-4 text-gray-400 animate-pulse" />
+        </div>
+      );
+    }
 
-    const allRead = message.readBy.length > 1;
+    const allRead = message.readBy && message.readBy.length > 1;
     const delivered = true;
 
     return (
@@ -244,7 +251,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
 
   return (
     <div className="group relative">
-      {/* Date separator */}
       {showDate && message.createdAt && (
         <div className="flex justify-center my-4">
           <div className="px-3 py-1 bg-gray-200 dark:bg-gray-700 rounded-full text-xs text-gray-600 dark:text-gray-300">
@@ -254,7 +260,7 @@ const MessageItem: React.FC<MessageItemProps> = ({
       )}
 
       <div className={`flex ${isSentByMe ? "justify-end" : "justify-start"}`}>
-        <div className="max-w-[70%] md:max-w-[60%]">
+        <div className={`max-w-[70%] md:max-w-[60%] ${isTempMessage ? 'opacity-80' : ''}`}>
           {/* Reply to message */}
           {message.replyTo && !message.replyTo.deleted && (
             <div
@@ -270,9 +276,9 @@ const MessageItem: React.FC<MessageItemProps> = ({
               <div className="flex items-center space-x-2 text-xs text-gray-500 dark:text-gray-400">
                 <ArrowUturnLeftIcon className="h-3 w-3" />
                 <span className="font-medium">
-                  {message.replyTo.sender._id === currentUser?._id
+                  {message.replyTo.sender?._id === currentUser?._id
                     ? "You"
-                    : message.replyTo.sender.name}
+                    : message.replyTo.sender?.name || "Unknown"}
                 </span>
               </div>
               <p className="text-sm truncate">
@@ -302,10 +308,11 @@ const MessageItem: React.FC<MessageItemProps> = ({
                     : "bg-gray-200 dark:bg-gray-800 text-gray-900 dark:text-gray-100 rounded-tl-none"
                 }
                 ${isDeleted ? "opacity-75" : ""}
+                ${isTempMessage ? "border-2 border-dashed border-yellow-400" : ""}
               `}
               onContextMenu={(e) => {
                 e.preventDefault();
-                setShowMenu(true);
+                if (!isTempMessage) setShowMenu(true);
               }}
             >
               {/* Sender name for group chats */}
@@ -327,64 +334,83 @@ const MessageItem: React.FC<MessageItemProps> = ({
                 ${isSentByMe ? "text-blue-200" : "text-gray-500 dark:text-gray-400"}
               `}
               >
-                <span>{format(new Date(message.createdAt), "HH:mm")}</span>
+                <span>
+                  {isTempMessage 
+                    ? "Sending..." 
+                    : format(new Date(message.createdAt), "HH:mm")}
+                </span>
                 {renderMessageStatus()}
               </div>
             </div>
 
             {/* Message actions menu */}
-            {showMenu && (
-              <div className="absolute z-10 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
-                <div className="py-1">
-                  <button
-                    onClick={handleReply}
-                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    <ArrowUturnLeftIcon className="h-4 w-4 mr-2" />
-                    Reply
-                  </button>
-                  <button
-                    onClick={handleForward}
-                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
-                    Forward
-                  </button>
-                  {isSentByMe && (
+            {showMenu && !isTempMessage && (
+              <>
+                <div className="absolute z-10 mt-2 w-48 bg-white dark:bg-gray-800 rounded-lg shadow-lg border border-gray-200 dark:border-gray-700">
+                  <div className="py-1">
                     <button
-                      onClick={handleDelete}
-                      className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      onClick={handleReply}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
                     >
-                      <TrashIcon className="h-4 w-4 mr-2" />
-                      Delete
+                      <ArrowUturnLeftIcon className="h-4 w-4 mr-2" />
+                      Reply
                     </button>
-                  )}
-                  <button
-                    onClick={() => setShowReactions(!showReactions)}
-                    className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
-                  >
-                    <FaceSmileIcon className="h-4 w-4 mr-2" />
-                    React
-                  </button>
+                    <button
+                      onClick={handleForward}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <ArrowUpTrayIcon className="h-4 w-4 mr-2" />
+                      Forward
+                    </button>
+                    {isSentByMe && (
+                      <button
+                        onClick={handleDelete}
+                        className="flex items-center w-full px-4 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <TrashIcon className="h-4 w-4 mr-2" />
+                        Delete
+                      </button>
+                    )}
+                    <button
+                      onClick={() => setShowReactions(!showReactions)}
+                      className="flex items-center w-full px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700"
+                    >
+                      <FaceSmileIcon className="h-4 w-4 mr-2" />
+                      React
+                    </button>
+                  </div>
                 </div>
-              </div>
+                <div
+                  className="fixed inset-0 z-0"
+                  onClick={() => {
+                    setShowMenu(false);
+                    setShowReactions(false);
+                  }}
+                />
+              </>
             )}
 
             {/* Reaction picker */}
-            {showReactions && (
-              <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 p-2">
-                <div className="flex space-x-2">
-                  {commonReactions.map((emoji) => (
-                    <button
-                      key={emoji}
-                      onClick={() => handleReactionClick(emoji)}
-                      className="text-xl hover:scale-125 transition-transform"
-                    >
-                      {emoji}
-                    </button>
-                  ))}
+            {showReactions && !isTempMessage && (
+              <>
+                <div className="absolute bottom-full left-0 mb-2 bg-white dark:bg-gray-800 rounded-full shadow-lg border border-gray-200 dark:border-gray-700 p-2 z-10">
+                  <div className="flex space-x-2">
+                    {commonReactions.map((emoji) => (
+                      <button
+                        key={emoji}
+                        onClick={() => handleReactionClick(emoji)}
+                        className="text-xl hover:scale-125 transition-transform"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </div>
-              </div>
+                <div
+                  className="fixed inset-0 z-0"
+                  onClick={() => setShowReactions(false)}
+                />
+              </>
             )}
           </div>
 
@@ -392,17 +418,6 @@ const MessageItem: React.FC<MessageItemProps> = ({
           {renderReactions()}
         </div>
       </div>
-
-      {/* Close menus when clicking outside */}
-      {(showMenu || showReactions) && (
-        <div
-          className="fixed inset-0 z-0"
-          onClick={() => {
-            setShowMenu(false);
-            setShowReactions(false);
-          }}
-        />
-      )}
     </div>
   );
 };

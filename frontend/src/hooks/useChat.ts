@@ -1,3 +1,4 @@
+// hooks/useChat.ts
 import { useEffect, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import { useSocket } from '../context/SocketContext';
@@ -19,7 +20,7 @@ import {
   setMessages,
   addMessage,
   updateMessage,
-  deleteMessage,
+  deleteMessage as deleteMessageAction,
   addTypingUser,
   removeTypingUser,
   setLoading,
@@ -29,7 +30,6 @@ import { ChatSocketService } from '../services/chat.service';
 import { Message, SendMessageRequest } from '../features/chat/chatApi';
 import toast from 'react-hot-toast';
 
-// Helper to convert Message options to SendMessageRequest
 const prepareMessageData = (
   content: string, 
   options: Partial<Message> = {}
@@ -39,10 +39,9 @@ const prepareMessageData = (
   const messageData: SendMessageRequest = {
     content: content.trim(),
     type: 'text',
-    ...otherOptions as any, // Type assertion for other properties
+    ...otherOptions as any,
   };
   
-  // Handle replyTo conversion
   if (replyTo) {
     if (typeof replyTo === 'object' && replyTo._id) {
       messageData.replyTo = replyTo._id;
@@ -63,10 +62,11 @@ export const useChat = () => {
   const typingUsers = useSelector(selectTypingUsers);
   
   const chatSocketRef = useRef<ChatSocketService | null>(null);
+  const typingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isInitializedRef = useRef(false);
   
-  // API hooks
-  const { data: chatsData, isLoading: isLoadingChats, error: chatsError } = useGetChatsQuery({});
-  const { data: messagesData, isLoading: isLoadingMessages, error: messagesError } = useGetMessagesQuery(
+  const { data: chatsData, isLoading: isLoadingChats, error: chatsError, refetch: refetchChats } = useGetChatsQuery({});
+  const { data: messagesData, isLoading: isLoadingMessages, error: messagesError, refetch: refetchMessages } = useGetMessagesQuery(
     { chatId: activeChat?._id || '', page: 1, limit: 50 },
     { skip: !activeChat?._id }
   );
@@ -78,113 +78,124 @@ export const useChat = () => {
   const [removeReactionApi] = useRemoveReactionMutation();
   const [deleteMessageApi] = useDeleteMessageMutation();
   
-  // Initialize socket service
+  // Initialize socket service ONCE
   useEffect(() => {
-    if (socket && isConnected) {
+    if (!socket || !isConnected) return;
+    
+    if (!isInitializedRef.current) {
+      console.log('✅ Initializing ChatSocketService (once)');
       chatSocketRef.current = new ChatSocketService(socket);
-      
-      return () => {
-        if (chatSocketRef.current) {
-          chatSocketRef.current.disconnect();
-          chatSocketRef.current = null;
-        }
-      };
+      isInitializedRef.current = true;
     }
   }, [socket, isConnected]);
   
   // Join/leave chat rooms
   useEffect(() => {
-    if (chatSocketRef.current && activeChat) {
-      chatSocketRef.current.joinChat(activeChat._id);
-      
-      return () => {
-        chatSocketRef.current?.leaveChat(activeChat._id);
-      };
-    }
-  }, [activeChat]);
+    if (!chatSocketRef.current || !activeChat) return;
+    
+    console.log(`📢 Joining chat room: ${activeChat._id}`);
+    chatSocketRef.current.joinChat(activeChat._id);
+    
+    return () => {
+      console.log(`👋 Leaving chat room: ${activeChat._id}`);
+      chatSocketRef.current?.leaveChat(activeChat._id);
+    };
+  }, [activeChat?._id]);
   
   // Load messages when active chat changes
   useEffect(() => {
     if (messagesData && activeChat) {
-      dispatch(setMessages(messagesData?.data?.messages || []));
+      console.log(`📨 Loading ${messagesData.data?.messages?.length || 0} messages`);
+      dispatch(setMessages(messagesData.data?.messages || []));
     }
   }, [messagesData, activeChat, dispatch]);
   
   // Handle errors
   useEffect(() => {
     if (chatsError) {
+      console.error('❌ Chats error:', chatsError);
       dispatch(setError('Failed to load chats'));
       toast.error('Failed to load chats');
     }
     if (messagesError) {
+      console.error('❌ Messages error:', messagesError);
       dispatch(setError('Failed to load messages'));
       toast.error('Failed to load messages');
     }
   }, [chatsError, messagesError, dispatch]);
   
-  // Chat management
   const selectChat = useCallback((chat: any) => {
+    console.log('💬 Selecting chat:', chat._id);
     dispatch(setActiveChat(chat));
     dispatch(setLoading(true));
     
-    // Mark messages as read
     if (chat.unreadCount > 0) {
       markAsReadApi({ chatId: chat._id });
     }
   }, [dispatch, markAsReadApi]);
   
   const sendMessage = useCallback(async (content: string, options: Partial<Message> = {}) => {
-    if (!activeChat || !content.trim()) return;
+  if (!activeChat) {
+    toast.error('No chat selected');
+    return;
+  }
+  
+  if (!content.trim()) return;
+  
+  try {
+    const messageData = prepareMessageData(content, options);
+    
+    // Send via socket for real-time
+    if (chatSocketRef.current) {
+      const socketMessage: Partial<Message> = {
+        content: content.trim(),
+        type: 'text' as const,
+        ...options,
+      };
+      chatSocketRef.current.sendMessage(activeChat._id, socketMessage);
+    }
+    
+    // Send via API for persistence
+    await sendMessageApi({
+      chatId: activeChat._id,
+      data: messageData,
+    }).unwrap();
+    
+    // Force refetch messages immediately after sending
+    await refetchMessages();
+    refetchChats();
+    
+  } catch (error) {
+    console.error('❌ Send message error:', error);
+    toast.error('Failed to send message');
+  }
+}, [activeChat, sendMessageApi, refetchChats, refetchMessages]);
+  
+  const sendFile = useCallback(async (file: File, type: Message['type']) => {
+    if (!activeChat || !file) return;
     
     try {
-      // Prepare message data for API
-      const messageData = prepareMessageData(content, options);
+      const messageData: SendMessageRequest = {
+        type,
+        fileName: file.name,
+        fileSize: file.size,
+        mimeType: file.type,
+        content: `${type} file: ${file.name}`,
+      };
       
-      // Send via socket (socket might accept different format)
       if (chatSocketRef.current) {
-        // For socket, we can send the original options
-        chatSocketRef.current.sendMessage(activeChat._id, {
-          content: content.trim(),
-          type: 'text',
-          ...options,
-        } as Partial<Message>);
+        chatSocketRef.current.sendMessage(activeChat._id, messageData as Partial<Message>);
       }
       
-      // Send via API for persistence
       await sendMessageApi({
         chatId: activeChat._id,
         data: messageData,
       }).unwrap();
       
     } catch (error) {
-      toast.error('Failed to send message');
-      console.error('Send message error:', error);
+      console.error('❌ Send file error:', error);
+      toast.error('Failed to send file');
     }
-  }, [activeChat, sendMessageApi]);
-  
-  const sendFile = useCallback(async (file: File, type: Message['type']) => {
-    if (!activeChat || !file) return;
-    
-    // In a real app, upload file to storage service first
-    // For now, create a mock file message
-    const messageData: SendMessageRequest = {
-      type,
-      fileName: file.name,
-      fileSize: file.size,
-      mimeType: file.type,
-      content: `${type} file: ${file.name}`,
-    };
-    
-    // Send via socket
-    if (chatSocketRef.current) {
-      chatSocketRef.current.sendMessage(activeChat._id, messageData as Partial<Message>);
-    }
-    
-    // Send via API
-    await sendMessageApi({
-      chatId: activeChat._id,
-      data: messageData,
-    }).unwrap();
   }, [activeChat, sendMessageApi]);
   
   const markAsRead = useCallback((messageIds: string[]) => {
@@ -204,7 +215,15 @@ export const useChat = () => {
       chatSocketRef.current.startTyping(activeChat._id);
     }
     
-    updateTypingApi({ chatId: activeChat._id, isTyping: true });
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    typingTimeoutRef.current = setTimeout(() => {
+      updateTypingApi({ chatId: activeChat._id, isTyping: true }).catch(err => {
+        console.warn('⚠️ Typing API error:', err);
+      });
+    }, 300);
   }, [activeChat, updateTypingApi]);
   
   const stopTyping = useCallback(() => {
@@ -214,14 +233,19 @@ export const useChat = () => {
       chatSocketRef.current.stopTyping(activeChat._id);
     }
     
-    updateTypingApi({ chatId: activeChat._id, isTyping: false });
+    if (typingTimeoutRef.current) {
+      clearTimeout(typingTimeoutRef.current);
+    }
+    
+    updateTypingApi({ chatId: activeChat._id, isTyping: false }).catch(err => {
+      console.warn('⚠️ Typing API error:', err);
+    });
   }, [activeChat, updateTypingApi]);
   
   const addReaction = useCallback((messageId: string, emoji: string) => {
     if (chatSocketRef.current) {
       chatSocketRef.current.addReaction(messageId, emoji);
     }
-    
     addReactionApi({ messageId, emoji });
   }, [addReactionApi]);
   
@@ -229,35 +253,29 @@ export const useChat = () => {
     if (chatSocketRef.current) {
       chatSocketRef.current.removeReaction(messageId);
     }
-    
     removeReactionApi(messageId);
   }, [removeReactionApi]);
   
   const deleteMessage = useCallback((messageId: string) => {
-    if (chatSocketRef.current) {
-      // Note: Should be deleteMessage, not removeReaction
-      // But ChatSocketService doesn't have deleteMessage emitter
-      // chatSocketRef.current.deleteMessage(messageId);
-    }
-    
-    deleteMessageApi(messageId);
-  }, [deleteMessageApi]);
+    dispatch(deleteMessageAction(messageId));
+    deleteMessageApi(messageId).catch(error => {
+      console.error('❌ Failed to delete message:', error);
+      toast.error('Failed to delete message');
+      refetchMessages();
+    });
+  }, [deleteMessageApi, dispatch, refetchMessages]);
   
-  // Get current user ID from auth state or localStorage
   const getCurrentUserId = useCallback(() => {
-    // TODO: Get from Redux auth state instead of localStorage
     return localStorage.getItem('userId');
   }, []);
   
   return {
-    // State
     chats: chatsData?.data?.chats || [],
     activeChat,
     messages,
     typingUsers,
     isLoading: isLoadingChats || isLoadingMessages,
     
-    // Actions
     selectChat,
     sendMessage,
     sendFile,
@@ -266,27 +284,20 @@ export const useChat = () => {
     stopTyping,
     addReaction,
     removeReaction,
+    refetchMessages,
     deleteMessage,
     
-    // Helpers
     getOtherParticipant: () => {
       if (!activeChat || activeChat.isGroup) return null;
       const userId = getCurrentUserId();
-      return activeChat.participants.find(p => p._id !== userId);
+      return activeChat.participants.find(p => p._id !== userId) || null;
     },
     
-    isUserTyping: (userId: string) => {
-      return typingUsers.includes(userId);
-    },
-    
+    isUserTyping: (userId: string) => typingUsers.includes(userId),
     getUnreadCount: (chatId: string) => {
-  const chat = chatsData?.data?.chats.find(
-    (c: any) => c._id === chatId
-  );
-  return chat?.unreadCount || 0;
-},
-    
-    // New helper for getting current user ID
+      const chat = chatsData?.data?.chats.find((c: any) => c._id === chatId);
+      return chat?.unreadCount || 0;
+    },
     getCurrentUserId,
   };
 };
