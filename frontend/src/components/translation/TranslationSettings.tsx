@@ -1,3 +1,4 @@
+// components/translation/TranslationSettings.tsx
 import React, { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import {
@@ -15,9 +16,10 @@ interface TranslationSettingsProps {
   onClose: () => void;
 }
 
-// Add this complete languages list to both files
+// Complete languages list with Indian and International languages
 const LANGUAGES = [
   // Indian Languages
+  { code: 'auto', name: 'Auto-Detect', nativeName: 'Auto Detect', flag: '🌐' },
   { code: 'hi', name: 'Hindi', nativeName: 'हिन्दी', flag: '🇮🇳' },
   { code: 'bn', name: 'Bengali', nativeName: 'বাংলা', flag: '🇮🇳' },
   { code: 'te', name: 'Telugu', nativeName: 'తెలుగు', flag: '🇮🇳' },
@@ -92,8 +94,8 @@ const TranslationSettings: React.FC<TranslationSettingsProps> = ({ isOpen, onClo
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center">
-      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
-        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+      <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+        <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 sticky top-0 bg-white dark:bg-gray-800">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             Translation Settings
           </h3>
@@ -135,13 +137,13 @@ const TranslationSettings: React.FC<TranslationSettingsProps> = ({ isOpen, onClo
                   onChange={(e) => setLocalSource(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white"
                 >
-                  <option value="auto">Auto-detect</option>
-                  {languages.map(lang => (
-                    <option key={lang.code} value={lang.code}>
-                      {lang.name}
+                  {LANGUAGES.map(lang => (
+                    <option key={`source-${lang.code}`} value={lang.code}>
+                      {lang.flag} {lang.name} ({lang.nativeName})
                     </option>
                   ))}
                 </select>
+                <p className="text-xs text-gray-500 mt-1">Select "Auto-Detect" to automatically identify the source language</p>
               </div>
 
               {/* Target language */}
@@ -154,9 +156,9 @@ const TranslationSettings: React.FC<TranslationSettingsProps> = ({ isOpen, onClo
                   onChange={(e) => setLocalTarget(e.target.value)}
                   className="w-full px-3 py-2 bg-gray-50 dark:bg-gray-700 border border-gray-300 dark:border-gray-600 rounded-lg text-gray-900 dark:text-white"
                 >
-                  {languages.map(lang => (
-                    <option key={lang.code} value={lang.code}>
-                      {lang.name}
+                  {LANGUAGES.filter(lang => lang.code !== 'auto').map(lang => (
+                    <option key={`target-${lang.code}`} value={lang.code}>
+                      {lang.flag} {lang.name} ({lang.nativeName})
                     </option>
                   ))}
                 </select>
@@ -165,7 +167,7 @@ const TranslationSettings: React.FC<TranslationSettingsProps> = ({ isOpen, onClo
           )}
         </div>
 
-        <div className="flex items-center justify-end space-x-3 p-4 border-t border-gray-200 dark:border-gray-700">
+        <div className="flex items-center justify-end space-x-3 p-4 border-t border-gray-200 dark:border-gray-700 sticky bottom-0 bg-white dark:bg-gray-800">
           <button
             onClick={onClose}
             className="px-4 py-2 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
@@ -176,7 +178,7 @@ const TranslationSettings: React.FC<TranslationSettingsProps> = ({ isOpen, onClo
             onClick={handleSave}
             className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
           >
-            Save
+            Save Settings
           </button>
         </div>
       </div>

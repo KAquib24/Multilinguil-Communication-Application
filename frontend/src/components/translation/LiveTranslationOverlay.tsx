@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { useLiveTranslation } from '../../hooks/useLiveTranslation';
-import { useSelector } from 'react-redux';
-import { selectCurrentUser } from '../../features/auth/authSlice';
+import React, { useEffect, useRef, useState } from "react";
+import { useLiveTranslation } from "../../hooks/useLiveTranslation";
+import { useSelector } from "react-redux";
+import { selectCurrentUser } from "../../features/auth/authSlice";
 import {
   MicrophoneIcon,
   SpeakerWaveIcon,
@@ -9,7 +9,7 @@ import {
   LanguageIcon,
   XMarkIcon,
   ChevronDownIcon,
-} from '@heroicons/react/24/outline';
+} from "@heroicons/react/24/outline";
 
 interface LiveTranslationOverlayProps {
   callId: string;
@@ -36,27 +36,27 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
     changeLanguage,
   } = useLiveTranslation(callId);
 
-  const [targetLang, setTargetLang] = useState('en');
+  const [targetLang, setTargetLang] = useState("en");
   const [showLanguageModal, setShowLanguageModal] = useState(false);
   const subtitlesRef = useRef<HTMLDivElement>(null);
 
   const languages = [
-    { code: 'en', name: 'English', flag: '🇺🇸', nativeName: 'English' },
-    { code: 'es', name: 'Spanish', flag: '🇪🇸', nativeName: 'Español' },
-    { code: 'fr', name: 'French', flag: '🇫🇷', nativeName: 'Français' },
-    { code: 'de', name: 'German', flag: '🇩🇪', nativeName: 'Deutsch' },
-    { code: 'zh', name: 'Chinese', flag: '🇨🇳', nativeName: '中文' },
-    { code: 'hi', name: 'Hindi', flag: '🇮🇳', nativeName: 'हिन्दी' },
-    { code: 'ar', name: 'Arabic', flag: '🇸🇦', nativeName: 'العربية' },
-    { code: 'ru', name: 'Russian', flag: '🇷🇺', nativeName: 'Русский' },
-    { code: 'pt', name: 'Portuguese', flag: '🇧🇷', nativeName: 'Português' },
-    { code: 'ja', name: 'Japanese', flag: '🇯🇵', nativeName: '日本語' },
-    { code: 'ko', name: 'Korean', flag: '🇰🇷', nativeName: '한국어' },
-    { code: 'it', name: 'Italian', flag: '🇮🇹', nativeName: 'Italiano' },
-    { code: 'nl', name: 'Dutch', flag: '🇳🇱', nativeName: 'Nederlands' },
-    { code: 'pl', name: 'Polish', flag: '🇵🇱', nativeName: 'Polski' },
-    { code: 'tr', name: 'Turkish', flag: '🇹🇷', nativeName: 'Türkçe' },
-    { code: 'vi', name: 'Vietnamese', flag: '🇻🇳', nativeName: 'Tiếng Việt' },
+    { code: "en", name: "English", flag: "🇺🇸", nativeName: "English" },
+    { code: "es", name: "Spanish", flag: "🇪🇸", nativeName: "Español" },
+    { code: "fr", name: "French", flag: "🇫🇷", nativeName: "Français" },
+    { code: "de", name: "German", flag: "🇩🇪", nativeName: "Deutsch" },
+    { code: "zh", name: "Chinese", flag: "🇨🇳", nativeName: "中文" },
+    { code: "hi", name: "Hindi", flag: "🇮🇳", nativeName: "हिन्दी" },
+    { code: "ar", name: "Arabic", flag: "🇸🇦", nativeName: "العربية" },
+    { code: "ru", name: "Russian", flag: "🇷🇺", nativeName: "Русский" },
+    { code: "pt", name: "Portuguese", flag: "🇧🇷", nativeName: "Português" },
+    { code: "ja", name: "Japanese", flag: "🇯🇵", nativeName: "日本語" },
+    { code: "ko", name: "Korean", flag: "🇰🇷", nativeName: "한국어" },
+    { code: "it", name: "Italian", flag: "🇮🇹", nativeName: "Italiano" },
+    { code: "nl", name: "Dutch", flag: "🇳🇱", nativeName: "Nederlands" },
+    { code: "pl", name: "Polish", flag: "🇵🇱", nativeName: "Polski" },
+    { code: "tr", name: "Turkish", flag: "🇹🇷", nativeName: "Türkçe" },
+    { code: "vi", name: "Vietnamese", flag: "🇻🇳", nativeName: "Tiếng Việt" },
   ];
 
   const handleToggleTranslation = () => {
@@ -74,13 +74,13 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
   };
 
   const getSpeakerName = (speakerId: string) => {
-    if (speakerId === currentUser?._id) return 'You';
-    const participant = participants.find(p => p.userId === speakerId);
-    return participant?.name || 'Unknown';
+    if (speakerId === currentUser?._id) return "You";
+    const participant = participants.find((p) => p.userId === speakerId);
+    return participant?.name || "Unknown";
   };
 
   const getCurrentLanguage = () => {
-    return languages.find(l => l.code === targetLang) || languages[0];
+    return languages.find((l) => l.code === targetLang) || languages[0];
   };
 
   // Auto-scroll subtitles
@@ -116,7 +116,7 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
               <span>{getCurrentLanguage().code.toUpperCase()}</span>
               <ChevronDownIcon className="h-4 w-4 ml-1 text-gray-400" />
             </button>
-            
+
             {/* Close button */}
             {onClose && (
               <button
@@ -128,14 +128,27 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
             )}
           </div>
         </div>
-
-        {/* Active speakers */}
+        // components/translation/LiveTranslationOverlay.tsx // Add this section
+        in the header area (after the header):
+        {/* Auto-detection indicator */}
+        <div className="px-4 py-2 border-b border-gray-700 bg-gray-800 bg-opacity-50">
+          <div className="flex items-center justify-between">
+            <div className="text-xs text-gray-400">Source Language:</div>
+            <div className="flex items-center space-x-1">
+              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+              <span className="text-xs text-green-400">Auto-Detecting</span>
+            </div>
+          </div>
+        </div>
+        {/* Active speakers section */}
         {activeSpeakers.length > 0 && (
           <div className="px-4 py-2 border-b border-gray-700 bg-gray-800 bg-opacity-50">
             <div className="text-xs text-gray-400 mb-1">Speaking now:</div>
             <div className="flex flex-wrap gap-2">
-              {activeSpeakers.map(speakerId => {
-                const speaker = participants.find(p => p.userId === speakerId);
+              {activeSpeakers.map((speakerId) => {
+                const speaker = participants.find(
+                  (p) => p.userId === speakerId,
+                );
                 return (
                   <div
                     key={speakerId}
@@ -143,7 +156,7 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
                   >
                     <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
                     <span className="text-xs text-green-300">
-                      {speaker?.name || 'Unknown'}
+                      {speaker?.name || "Unknown"}
                     </span>
                   </div>
                 );
@@ -151,20 +164,40 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
             </div>
           </div>
         )}
-
+        {/* Active speakers */}
+        {activeSpeakers.length > 0 && (
+          <div className="px-4 py-2 border-b border-gray-700 bg-gray-800 bg-opacity-50">
+            <div className="text-xs text-gray-400 mb-1">Speaking now:</div>
+            <div className="flex flex-wrap gap-2">
+              {activeSpeakers.map((speakerId) => {
+                const speaker = participants.find(
+                  (p) => p.userId === speakerId,
+                );
+                return (
+                  <div
+                    key={speakerId}
+                    className="flex items-center space-x-1 px-2 py-1 bg-green-900 bg-opacity-50 rounded-full"
+                  >
+                    <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                    <span className="text-xs text-green-300">
+                      {speaker?.name || "Unknown"}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
         {/* Subtitles area */}
-        <div
-          ref={subtitlesRef}
-          className="h-72 overflow-y-auto p-4 space-y-3"
-        >
+        <div ref={subtitlesRef} className="h-72 overflow-y-auto p-4 space-y-3">
           {subtitles.length === 0 ? (
             <div className="h-full flex flex-col items-center justify-center text-gray-500">
               <LanguageIcon className="h-12 w-12 mb-3 opacity-50" />
               <p className="text-sm font-medium">No translations yet</p>
               <p className="text-xs text-center mt-2 text-gray-400">
                 {isTranslating
-                  ? 'Speak to see live translations'
-                  : 'Click Start to enable translation'}
+                  ? "Speak to see live translations"
+                  : "Click Start to enable translation"}
               </p>
             </div>
           ) : (
@@ -173,8 +206,8 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
                 key={`${sub.speakerId}-${index}`}
                 className={`p-3 rounded-lg ${
                   sub.isFinal
-                    ? 'bg-gray-800'
-                    : 'bg-gray-800 bg-opacity-50 border border-blue-500 border-opacity-30'
+                    ? "bg-gray-800"
+                    : "bg-gray-800 bg-opacity-50 border border-blue-500 border-opacity-30"
                 }`}
               >
                 <div className="flex items-center justify-between mb-1">
@@ -191,7 +224,6 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
             ))
           )}
         </div>
-
         {/* Controls */}
         <div className="p-4 border-t border-gray-700 bg-gray-800">
           <div className="flex items-center justify-between">
@@ -199,8 +231,8 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
               onClick={handleToggleTranslation}
               className={`flex items-center space-x-2 px-5 py-2.5 rounded-lg transition-colors font-medium ${
                 isTranslating
-                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-blue-600 hover:bg-blue-700 text-white'
+                  ? "bg-red-600 hover:bg-red-700 text-white"
+                  : "bg-blue-600 hover:bg-blue-700 text-white"
               }`}
             >
               {isTranslating ? (
@@ -230,7 +262,9 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
           <div className="bg-gray-800 rounded-2xl w-full max-w-md max-h-[80vh] overflow-hidden">
             {/* Modal Header */}
             <div className="flex items-center justify-between p-4 border-b border-gray-700">
-              <h3 className="text-white text-lg font-semibold">Select Language</h3>
+              <h3 className="text-white text-lg font-semibold">
+                Select Language
+              </h3>
               <button
                 onClick={() => setShowLanguageModal(false)}
                 className="p-2 rounded-lg hover:bg-gray-700"
@@ -242,20 +276,22 @@ const LiveTranslationOverlay: React.FC<LiveTranslationOverlayProps> = ({
             {/* Language List */}
             <div className="p-4 overflow-y-auto max-h-[60vh]">
               <div className="grid grid-cols-1 gap-2">
-                {languages.map(lang => (
+                {languages.map((lang) => (
                   <button
                     key={lang.code}
                     onClick={() => handleLanguageChange(lang.code)}
                     className={`flex items-center space-x-4 p-4 rounded-xl transition-all ${
                       targetLang === lang.code
-                        ? 'bg-blue-600 ring-2 ring-blue-400'
-                        : 'bg-gray-700 hover:bg-gray-600'
+                        ? "bg-blue-600 ring-2 ring-blue-400"
+                        : "bg-gray-700 hover:bg-gray-600"
                     }`}
                   >
                     <span className="text-3xl">{lang.flag}</span>
                     <div className="flex-1 text-left">
                       <div className="text-white font-medium">{lang.name}</div>
-                      <div className="text-sm text-gray-400">{lang.nativeName}</div>
+                      <div className="text-sm text-gray-400">
+                        {lang.nativeName}
+                      </div>
                     </div>
                     {targetLang === lang.code && (
                       <div className="w-2 h-2 bg-white rounded-full" />

@@ -196,82 +196,67 @@ export const useLiveTranslation = (callId: string) => {
     return btoa(binary);
   };
 
-  const startTranslation = useCallback(async () => {
-    if (!translationSocket || !callId) return;
+  // hooks/useLiveTranslation.ts
+const startTranslation = useCallback(async () => {
+  if (!translationSocket || !callId) return;
 
-    try {
-      // 🎤 Step 1: Get mic
-      const stream = await navigator.mediaDevices.getUserMedia({
-        audio: {
-          echoCancellation: true,
-          noiseSuppression: true,
-          autoGainControl: true,
-          sampleRate: 16000,
-          channelCount: 1,
-        },
-      });
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: true,
+        noiseSuppression: true,
+        autoGainControl: true,
+        sampleRate: 16000,
+        channelCount: 1,
+      },
+    });
 
-      streamRef.current = stream;
+    streamRef.current = stream;
 
-      // 🎧 Step 2: Audio Context
-      const audioContext = new AudioContext({ sampleRate: 16000 });
-      audioContextRef.current = audioContext;
+    const audioContext = new AudioContext({ sampleRate: 16000 });
+    audioContextRef.current = audioContext;
 
-      // 🎯 Step 3: Source
-      const source = audioContext.createMediaStreamSource(stream);
-      (streamRef as any).source = source;
+    const source = audioContext.createMediaStreamSource(stream);
+    
+    const processor = audioContext.createScriptProcessor(4096, 1, 1);
 
-      // ⚠️ Step 4: ScriptProcessor (correct one)
-      const processor = audioContext.createScriptProcessor(4096, 1, 1);
+    processor.onaudioprocess = (event) => {
+      if (!translatingRef.current) return;
 
-      processor.onaudioprocess = (event) => {
-        if (!translatingRef.current) return;
+      const inputData = event.inputBuffer.getChannelData(0);
+      const int16Data = new Int16Array(inputData.length);
+      for (let i = 0; i < inputData.length; i++) {
+        const s = Math.max(-1, Math.min(1, inputData[i]));
+        int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
+      }
 
-        const inputData = event.inputBuffer.getChannelData(0);
+      const base64 = arrayBufferToBase64(int16Data.buffer);
+      translationSocket.sendAudioChunk(callId, base64);
+    };
 
-        // 🔁 Float32 → Int16
-        const int16Data = new Int16Array(inputData.length);
-        for (let i = 0; i < inputData.length; i++) {
-          const s = Math.max(-1, Math.min(1, inputData[i]));
-          int16Data[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-        }
+    source.connect(processor);
+    
+    // Don't connect to destination to avoid echo
+    processor.connect(audioContext.destination);
+    
+    (streamRef as any).processor = processor;
 
-        // ✅ OPTION 1 (safe): base64
-        const base64 = arrayBufferToBase64(int16Data.buffer);
-        translationSocket.sendAudioChunk(callId, base64);
+    // ✅ Start translation with sourceLanguage = 'auto'
+    translationSocket.startTranslation(
+      callId,
+      targetLanguage,
+      'auto'  // Always use auto-detection for source
+    );
 
-        // ✅ OPTION 2 (better - if backend supports binary)
-        // translationSocket.sendAudioChunk(callId, int16Data.buffer);
-      };
+    setIsTranslating(true);
+    translatingRef.current = true;
 
-      // 🔌 Step 5: Connect graph (NO ECHO)
-      source.connect(processor);
-
-      const gainNode = audioContext.createGain();
-      gainNode.gain.value = 0;
-
-      processor.connect(gainNode);
-      gainNode.connect(audioContext.destination);
-
-      // 💾 Store refs
-      (streamRef as any).processor = processor;
-
-      // 🚀 Start backend translation
-      translationSocket.startTranslation(
-        callId,
-        targetLanguage,
-        sourceLanguage,
-      );
-
-      setIsTranslating(true);
-      translatingRef.current = true;
-
-      console.log("🎤 Real-time streaming translation started");
-    } catch (error: any) {
-      console.error("❌ Failed to start translation:", error);
-      throw error;
-    }
-  }, [translationSocket, callId, targetLanguage, sourceLanguage]);
+    console.log("🎤 Real-time streaming translation started with auto-detection");
+  } catch (error: any) {
+    console.error("❌ Failed to start translation:", error);
+    throw error;
+  }
+}, [translationSocket, callId, targetLanguage]);
 
   const stopTranslation = useCallback(() => {
     if (!translationSocket || !callId) return;

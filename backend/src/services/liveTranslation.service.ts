@@ -141,14 +141,18 @@ export class LiveTranslationService {
 
         console.log(`🔄 (Re)starting recognition stream for user ${userId}`);
 
+        const recognitionLanguage =
+          sourceLanguage === "auto" ? undefined : sourceLanguage;
+
         const recognizeStream = speechClient.streamingRecognize({
           config: {
             encoding: "LINEAR16",
             sampleRateHertz: 16000,
             audioChannelCount: 1,
-            languageCode: googleRecognitionLanguage,
+            languageCode: recognitionLanguage, // undefined means auto-detect
             enableAutomaticPunctuation: true,
             model: "latest_long",
+            useEnhanced: true, // Enable enhanced model for better detection
           },
           interimResults: true,
         });

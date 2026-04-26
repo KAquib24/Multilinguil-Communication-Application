@@ -29,21 +29,21 @@ interface TranslationState {
   isPlayingAudio: boolean;
 }
 
+// features/translation/translationSlice.ts
 const initialState: TranslationState = {
   supportedLanguages: [],
   currentSession: null,
   sessions: [],
   isTranslating: false,
   translationEnabled: false,
-  sourceLanguage: 'en',
-  targetLanguage: 'es',
+  sourceLanguage: 'auto', // ✅ CHANGE from 'en' to 'auto'
+  targetLanguage: 'es',   // Keep default as Spanish or change to 'en'
   translationHistory: [],
   isLoading: false,
   error: null,
   audioQueue: [],
   isPlayingAudio: false,
 };
-
 const translationSlice = createSlice({
   name: 'translation',
   initialState,

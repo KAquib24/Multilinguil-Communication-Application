@@ -63,14 +63,22 @@ export class TranslationSocketService {
   /**
    * Start translation for a call
    */
-  startTranslation(callId: string, targetLanguage: string, sourceLanguage?: string) {
-    this.socket?.emit("translation:start", {
-      callId,
-      targetLanguage,
-      sourceLanguage,
-    });
-    store.dispatch(setIsTranslating(true));
+  // services/translationSocket.service.ts
+startTranslation(callId: string, targetLanguage: string, sourceLanguage?: string) {
+  // If sourceLanguage is 'auto' or undefined, don't send it (backend will auto-detect)
+  const payload: any = {
+    callId,
+    targetLanguage,
+  };
+  
+  // Only send sourceLanguage if it's a specific language (not auto)
+  if (sourceLanguage && sourceLanguage !== 'auto') {
+    payload.sourceLanguage = sourceLanguage;
   }
+  
+  this.socket?.emit("translation:start", payload);
+  store.dispatch(setIsTranslating(true));
+}
 
   /**
    * Send audio chunk for translation
